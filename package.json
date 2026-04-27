@@ -11,9 +11,10 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "electron:icon": "node electron/gen-icon.cjs",
     "electron:dev": "concurrently \"vite\" \"electron .\"",
-    "electron:build": "vite build && electron-builder --win nsis",
-    "electron:release": "vite build && electron-builder --win nsis --publish always"
+    "electron:build": "npm run electron:icon && vite build && electron-builder --win nsis",
+    "electron:release": "npm run electron:icon && vite build && electron-builder --win nsis --publish always"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.100.0",
@@ -72,7 +73,9 @@
     "nsis": {
       "oneClick": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "electron/icon.ico",
+      "uninstallerIcon": "electron/icon.ico"
     }
   }
 }

@@ -1,18 +1,16 @@
-﻿import { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useStore } from '../store';
 import { fmt } from '../utils';
-import { TrendingUp, DollarSign, ShoppingBag, Receipt, BarChart3, Calendar } from 'lucide-react';
+import { TrendingUp, DollarSign, ShoppingBag, Receipt, BarChart3, Calendar, Activity } from 'lucide-react';
 
 export default function ReportesPage() {
     const activePage = useStore((state) => state.activePage);
     const sales = useStore((state) => state.sales);
 
     const [period, setPeriod] = useState('hoy');
-    // Para filtro personalizado
     const [dateDesde, setDateDesde] = useState('');
     const [dateHasta, setDateHasta] = useState('');
 
-    // Helpers
     const parseDbDate = (dStr) => {
         if (!dStr) return new Date();
         const parts = dStr.split('/');
@@ -55,12 +53,8 @@ export default function ReportesPage() {
             pLabel = 'Histórico Total';
             chartType = 'mensual';
         } else if (period === 'custom') {
-            if (dateDesde) {
-                dStart = new Date(dateDesde + 'T00:00:00');
-            }
-            if (dateHasta) {
-                dEnd = new Date(dateHasta + 'T23:59:59');
-            }
+            if (dateDesde) dStart = new Date(dateDesde + 'T00:00:00');
+            if (dateHasta) dEnd = new Date(dateHasta + 'T23:59:59');
             pLabel = 'Rango Personalizado';
             const diffDays = (dEnd - dStart) / (1000 * 60 * 60 * 24);
             if (diffDays <= 2) chartType = 'horario';
@@ -83,9 +77,7 @@ export default function ReportesPage() {
             fSales.forEach(s => {
                 if (!s.hora) return;
                 const hour = parseInt(s.hora.split(':')[0]);
-                if (hour >= 8 && hour <= 22) {
-                    cValsObj[`${hour}h`] += s.total;
-                }
+                if (hour >= 8 && hour <= 22) cValsObj[`${hour}h`] += s.total;
             });
         } else if (chartType === 'semanal') {
             cLabels = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -112,12 +104,7 @@ export default function ReportesPage() {
             });
         }
 
-        return {
-            filteredSales: fSales,
-            labels: cLabels,
-            vals: cLabels.map(l => cValsObj[l]),
-            periodLabel: pLabel
-        };
+        return { filteredSales: fSales, labels: cLabels, vals: cLabels.map(l => cValsObj[l]), periodLabel: pLabel };
     }, [sales, period, dateDesde, dateHasta]);
 
     if (activePage !== 'reportes') return null;
@@ -152,210 +139,239 @@ export default function ReportesPage() {
         .sort((a, b) => b.profit - a.profit)
         .slice(0, 5);
 
-    const BG     = '#f1f4f9';
-    const WHITE  = '#ffffff';
-    const BORDER = '#e4e7ef';
-    const TEXT1  = '#0f1117';
-    const TEXT2  = '#4b5563';
-    const TEXT3  = '#9ca3af';
-    const GREEN  = '#16a34a';
-    const GREEN_L= '#dcfce7';
-    const BLUE   = '#2563eb';
-    const BLUE_L = '#dbeafe';
-    const SHADOW = '0 1px 2px rgba(15,17,23,0.04), 0 4px 20px rgba(15,17,23,0.07)';
+    // Tokens SaaS
+    const BG     = '#FAFAFA';
+    const WHITE  = '#FFFFFF';
+    const BORDER = '#E5E7EB';
+    const TEXT1  = '#111827';
+    const TEXT2  = '#4B5563';
+    const TEXT3  = '#6B7280';
+    const ACCENT = '#111827';
+    const GREEN  = '#059669';
 
     return (
         <div className="page active" id="page-reportes" style={{ background: BG, padding: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
 
             {/* ── TOPBAR ── */}
-            <div style={{ position: 'sticky', top: 0, zIndex: 20, padding: '0 24px', background: WHITE, borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, height: 64, boxShadow: '0 1px 0 rgba(15,17,23,0.05)', flexWrap: 'wrap' }}>
-                <div>
-                    <span style={{ fontSize: 17, fontWeight: 700, color: TEXT1, letterSpacing: '-0.4px' }}>Reportes</span>
-                    <span style={{ fontSize: 12, color: TEXT3, fontWeight: 500, marginLeft: 8 }}>· {periodLabel}</span>
+            <div style={{ position: 'sticky', top: 0, zIndex: 20, padding: '0 32px', background: WHITE, borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0, height: 68 }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontSize: 20, fontWeight: 700, color: TEXT1, letterSpacing: '-0.02em', lineHeight: 1.2 }}>Analytics</span>
+                    <span style={{ fontSize: 13, color: TEXT3, fontWeight: 500 }}>Dashboard de métricas</span>
                 </div>
+                
                 <div style={{ flex: 1 }} />
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    {['hoy','semana','mes','anio','todo','custom'].map(p => {
-                        const labelsMap = { hoy:'Hoy', semana:'Semana', mes:'Mes', anio:'Año', todo:'Todo', custom:'Rango' };
-                        const active = period === p;
-                        return (
-                            <button key={p} onClick={() => setPeriod(p)}
-                                style={{ padding: '6px 14px', borderRadius: 8, border: `1.5px solid ${active ? BLUE : BORDER}`, fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer', transition: 'all 0.15s', background: active ? BLUE_L : '#f8fafc', color: active ? BLUE : TEXT2, fontFamily: 'inherit' }}>
-                                {labelsMap[p]}
-                            </button>
-                        );
-                    })}
-                </div>
-                {period === 'custom' && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc', padding: '6px 12px', borderRadius: 8, border: `1.5px solid ${BORDER}` }}>
-                        <Calendar size={14} style={{ color: TEXT3 }} />
-                        <input type="date" value={dateDesde} onChange={e => setDateDesde(e.target.value)}
-                            style={{ background: 'transparent', border: 'none', color: TEXT2, outline: 'none', fontSize: 12, fontFamily: 'inherit', fontWeight: 500 }} />
-                        <span style={{ color: TEXT3 }}>–</span>
-                        <input type="date" value={dateHasta} onChange={e => setDateHasta(e.target.value)}
-                            style={{ background: 'transparent', border: 'none', color: TEXT2, outline: 'none', fontSize: 12, fontFamily: 'inherit', fontWeight: 500 }} />
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    {/* Period Label */}
+                    <div style={{ fontSize: 13, fontWeight: 500, color: TEXT2, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Activity size={14} color={TEXT3}/> 
+                        {periodLabel}
                     </div>
-                )}
+
+                    {/* Segmented Control */}
+                    <div style={{ display: 'flex', background: '#F3F4F6', padding: 4, borderRadius: 10, border: `1px solid #E5E7EB` }}>
+                        {[
+                            { id: 'hoy',    l: 'Hoy' },
+                            { id: 'semana', l: 'Semana' },
+                            { id: 'mes',    l: 'Mes' },
+                            { id: 'anio',   l: 'Año' },
+                            { id: 'todo',   l: 'Histórico' },
+                            { id: 'custom', l: 'Rango' }
+                        ].map(p => {
+                            const active = period === p.id;
+                            return (
+                                <button key={p.id} onClick={() => setPeriod(p.id)}
+                                    style={{ 
+                                        padding: '6px 14px', borderRadius: 6, border: 'none', 
+                                        fontSize: 13, fontWeight: active ? 600 : 500, cursor: 'pointer', 
+                                        transition: 'all 0.2s ease', 
+                                        background: active ? WHITE : 'transparent', 
+                                        color: active ? TEXT1 : TEXT3, 
+                                        boxShadow: active ? '0 1px 3px rgba(0,0,0,0.06)' : 'none' 
+                                    }}>
+                                    {p.l}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Date Pickers for Custom */}
+                    {period === 'custom' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: WHITE, padding: '4px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, boxShadow: '0 1px 2px rgba(0,0,0,0.02) inset' }}>
+                            <Calendar size={14} style={{ color: TEXT3 }} />
+                            <input type="date" value={dateDesde} onChange={e => setDateDesde(e.target.value)}
+                                style={{ background: 'transparent', border: 'none', color: TEXT1, outline: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer' }} />
+                            <span style={{ color: BORDER }}>|</span>
+                            <input type="date" value={dateHasta} onChange={e => setDateHasta(e.target.value)}
+                                style={{ background: 'transparent', border: 'none', color: TEXT1, outline: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer' }} />
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* ── CONTENIDO ── */}
-            <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div style={{ maxWidth: 1200, margin: '0 auto', width: '100%', padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 24 }}>
 
                 {/* KPI CARDS */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
-
-                    {/* Ventas — azul */}
-                    <div style={{ background: 'linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%)', borderRadius: 18, border: '1.5px solid #93c5fd', boxShadow: '0 2px 8px rgba(37,99,235,0.1),0 6px 24px rgba(37,99,235,0.08)', padding: '20px 22px', transition: 'all 0.2s' }}
-                        onMouseEnter={e => { e.currentTarget.style.transform='translateY(-3px)'; e.currentTarget.style.boxShadow='0 6px 20px rgba(37,99,235,0.18),0 12px 32px rgba(37,99,235,0.12)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow='0 2px 8px rgba(37,99,235,0.1),0 6px 24px rgba(37,99,235,0.08)'; }}>
-                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-                            <span style={{ fontSize:11, fontWeight:700, color:'#1d4ed8', textTransform:'uppercase', letterSpacing:'0.8px' }}>Ventas Totales</span>
-                            <div style={{ width:36, height:36, borderRadius:10, background:'rgba(37,99,235,0.15)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                                <DollarSign size={17} style={{ color:'#1d4ed8' }} />
-                            </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20 }}>
+                    
+                    {/* Ganancia (Destacada) */}
+                    <div style={{ background: WHITE, borderRadius: 16, border: `1px solid ${BORDER}`, padding: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: TEXT3, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Ganancia Neta</span>
+                            <TrendingUp size={18} color={GREEN} />
                         </div>
-                        <div style={{ fontSize:36, fontWeight:900, color:'#1e3a8a', letterSpacing:'-1.5px', lineHeight:1, fontVariantNumeric:'tabular-nums' }}>{fmt(baseTotal)}</div>
-                        <div style={{ marginTop:10, fontSize:12, fontWeight:600, color:'#2563eb', background:'rgba(37,99,235,0.1)', padding:'3px 10px', borderRadius:8, display:'inline-block' }}>{cantTransacciones} ventas</div>
+                        <div style={{ fontSize: 36, fontWeight: 700, color: TEXT1, letterSpacing: '-1px', lineHeight: 1, marginBottom: 8 }}>{fmt(ganancia)}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 'auto' }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: GREEN, background: '#ECFDF5', padding: '2px 8px', borderRadius: 6 }}>Margen {margen}%</span>
+                        </div>
                     </div>
 
-                    {/* Ganancia — verde */}
-                    <div style={{ background: 'linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%)', borderRadius: 18, border: '1.5px solid #86efac', boxShadow: '0 2px 8px rgba(22,163,74,0.1),0 6px 24px rgba(22,163,74,0.08)', padding: '20px 22px', transition: 'all 0.2s' }}
-                        onMouseEnter={e => { e.currentTarget.style.transform='translateY(-3px)'; e.currentTarget.style.boxShadow='0 6px 20px rgba(22,163,74,0.18),0 12px 32px rgba(22,163,74,0.12)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow='0 2px 8px rgba(22,163,74,0.1),0 6px 24px rgba(22,163,74,0.08)'; }}>
-                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-                            <span style={{ fontSize:11, fontWeight:700, color:'#15803d', textTransform:'uppercase', letterSpacing:'0.8px' }}>Ganancia Neta</span>
-                            <div style={{ width:36, height:36, borderRadius:10, background:'rgba(22,163,74,0.15)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                                <TrendingUp size={17} style={{ color:'#15803d' }} />
-                            </div>
+                    {/* Ventas */}
+                    <div style={{ background: WHITE, borderRadius: 16, border: `1px solid ${BORDER}`, padding: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: TEXT3, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Ventas Totales</span>
+                            <DollarSign size={18} color={TEXT3} />
                         </div>
-                        <div style={{ fontSize:36, fontWeight:900, color:'#14532d', letterSpacing:'-1.5px', lineHeight:1, fontVariantNumeric:'tabular-nums' }}>{fmt(ganancia)}</div>
-                        <div style={{ marginTop:10, fontSize:12, fontWeight:600, color:'#16a34a', background:'rgba(22,163,74,0.12)', padding:'3px 10px', borderRadius:8, display:'inline-block' }}>Margen {margen}%</div>
+                        <div style={{ fontSize: 36, fontWeight: 700, color: TEXT1, letterSpacing: '-1px', lineHeight: 1, marginBottom: 8 }}>{fmt(baseTotal)}</div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', marginTop: 'auto' }}>
+                            <span style={{ fontSize: 13, fontWeight: 500, color: TEXT3 }}>Bruto facturado</span>
+                        </div>
                     </div>
 
-                    {/* Transacciones — púrpura */}
-                    <div style={{ background: 'linear-gradient(135deg,#faf5ff 0%,#ede9fe 100%)', borderRadius: 18, border: '1.5px solid #c4b5fd', boxShadow: '0 2px 8px rgba(124,58,237,0.1),0 6px 24px rgba(124,58,237,0.08)', padding: '20px 22px', transition: 'all 0.2s' }}
-                        onMouseEnter={e => { e.currentTarget.style.transform='translateY(-3px)'; e.currentTarget.style.boxShadow='0 6px 20px rgba(124,58,237,0.18),0 12px 32px rgba(124,58,237,0.12)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow='0 2px 8px rgba(124,58,237,0.1),0 6px 24px rgba(124,58,237,0.08)'; }}>
-                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-                            <span style={{ fontSize:11, fontWeight:700, color:'#6d28d9', textTransform:'uppercase', letterSpacing:'0.8px' }}>Transacciones</span>
-                            <div style={{ width:36, height:36, borderRadius:10, background:'rgba(124,58,237,0.15)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                                <Receipt size={17} style={{ color:'#6d28d9' }} />
-                            </div>
+                    {/* Transacciones */}
+                    <div style={{ background: WHITE, borderRadius: 16, border: `1px solid ${BORDER}`, padding: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: TEXT3, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Transacciones</span>
+                            <Receipt size={18} color={TEXT3} />
                         </div>
-                        <div style={{ fontSize:36, fontWeight:900, color:'#4c1d95', letterSpacing:'-1.5px', lineHeight:1, fontVariantNumeric:'tabular-nums' }}>{cantTransacciones}</div>
-                        <div style={{ marginTop:10, fontSize:12, fontWeight:600, color:'#7c3aed', background:'rgba(124,58,237,0.1)', padding:'3px 10px', borderRadius:8, display:'inline-block' }}>Ticket prom: {fmt(ticketPromedio)}</div>
+                        <div style={{ fontSize: 36, fontWeight: 700, color: TEXT1, letterSpacing: '-1px', lineHeight: 1, marginBottom: 8 }}>{cantTransacciones}</div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', marginTop: 'auto' }}>
+                            <span style={{ fontSize: 13, fontWeight: 500, color: TEXT3 }}>Ventas concretadas</span>
+                        </div>
                     </div>
 
-                    {/* Ticket promedio — ámbar */}
-                    <div style={{ background: 'linear-gradient(135deg,#fffbeb 0%,#fef3c7 100%)', borderRadius: 18, border: '1.5px solid #fcd34d', boxShadow: '0 2px 8px rgba(217,119,6,0.1),0 6px 24px rgba(217,119,6,0.08)', padding: '20px 22px', transition: 'all 0.2s' }}
-                        onMouseEnter={e => { e.currentTarget.style.transform='translateY(-3px)'; e.currentTarget.style.boxShadow='0 6px 20px rgba(217,119,6,0.18),0 12px 32px rgba(217,119,6,0.12)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow='0 2px 8px rgba(217,119,6,0.1),0 6px 24px rgba(217,119,6,0.08)'; }}>
-                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-                            <span style={{ fontSize:11, fontWeight:700, color:'#b45309', textTransform:'uppercase', letterSpacing:'0.8px' }}>Ticket Promedio</span>
-                            <div style={{ width:36, height:36, borderRadius:10, background:'rgba(217,119,6,0.15)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                                <ShoppingBag size={17} style={{ color:'#b45309' }} />
-                            </div>
+                    {/* Ticket Promedio */}
+                    <div style={{ background: WHITE, borderRadius: 16, border: `1px solid ${BORDER}`, padding: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: TEXT3, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Ticket Promedio</span>
+                            <ShoppingBag size={18} color={TEXT3} />
                         </div>
-                        <div style={{ fontSize:36, fontWeight:900, color:'#78350f', letterSpacing:'-1.5px', lineHeight:1, fontVariantNumeric:'tabular-nums' }}>{fmt(ticketPromedio)}</div>
-                        <div style={{ marginTop:10, fontSize:12, fontWeight:600, color:'#d97706', background:'rgba(217,119,6,0.1)', padding:'3px 10px', borderRadius:8, display:'inline-block' }}>Por venta</div>
+                        <div style={{ fontSize: 36, fontWeight: 700, color: TEXT1, letterSpacing: '-1px', lineHeight: 1, marginBottom: 8 }}>{fmt(ticketPromedio)}</div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', marginTop: 'auto' }}>
+                            <span style={{ fontSize: 13, fontWeight: 500, color: TEXT3 }}>Por cliente</span>
+                        </div>
                     </div>
+
                 </div>
 
-                {/* GRÁFICO */}
-                <div style={{ background: WHITE, borderRadius: 18, border: `1px solid ${BORDER}`, boxShadow: SHADOW, overflow: 'hidden' }}>
-                    <div style={{ padding: '18px 24px', borderBottom: `1px solid #f3f4f6`, background: '#fafafa', display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{ width: 32, height: 32, borderRadius: 9, background: BLUE_L, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <BarChart3 size={16} style={{ color: BLUE }} />
-                        </div>
+                {/* GRÁFICO PRINCIPAL */}
+                <div style={{ background: WHITE, borderRadius: 16, border: `1px solid ${BORDER}`, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', padding: 24 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
                         <div>
-                            <div style={{ fontSize: 14, fontWeight: 700, color: TEXT1 }}>Evolución de Ventas</div>
-                            <div style={{ fontSize: 11, color: TEXT3, fontWeight: 500 }}>{periodLabel}</div>
+                            <h3 style={{ fontSize: 16, fontWeight: 600, color: TEXT1, margin: 0 }}>Evolución de Ingresos</h3>
+                            <p style={{ fontSize: 13, color: TEXT3, margin: '4px 0 0' }}>Volumen de ventas a lo largo del tiempo</p>
                         </div>
                         {baseTotal > 0 && (
-                            <div style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: BLUE, background: BLUE_L, padding: '4px 12px', borderRadius: 8 }}>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: TEXT1, background: BG, padding: '6px 12px', borderRadius: 8, border: `1px solid ${BORDER}` }}>
                                 Total: {fmt(baseTotal)}
                             </div>
                         )}
                     </div>
-                    <div style={{ padding: '24px 24px 16px' }}>
-                        {baseTotal === 0 ? (
-                            <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: TEXT3, fontSize: 14 }}>Sin ventas en este período</div>
-                        ) : (
-                            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 5, height: 160 }}>
-                                {vals.map((v, i) => (
-                                    <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                                        <div title={fmt(v)} style={{ width: '100%', height: `${(v / maxChartVal) * 130}px`, background: v > 0 ? 'linear-gradient(180deg,#3b82f6 0%,#1d4ed8 100%)' : '#e5e7eb', borderRadius: '4px 4px 2px 2px', transition: 'height 0.3s ease', minHeight: v > 0 ? 4 : 0 }} />
-                                        <span style={{ fontSize: 10, color: TEXT3, transform: labels.length > 15 ? 'rotate(-45deg)' : 'none', marginTop: labels.length > 15 ? 4 : 0 }}>{labels[i]}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                    
+                    {baseTotal === 0 ? (
+                        <div style={{ height: 260, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#F9FAFB', borderRadius: 12, border: '1px dashed #D1D5DB' }}>
+                            <BarChart3 size={32} color="#D1D5DB" style={{ marginBottom: 12 }} />
+                            <span style={{ fontSize: 15, fontWeight: 600, color: TEXT2 }}>Aún no hay datos</span>
+                            <span style={{ fontSize: 13, color: TEXT3, marginTop: 4 }}>Registra ventas para visualizar el gráfico</span>
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 260, paddingBottom: 24, borderBottom: `1px solid #F3F4F6`, position: 'relative' }}>
+                            {vals.map((v, i) => (
+                                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, height: '100%', justifyContent: 'flex-end', group: 'bar' }}>
+                                    
+                                    <div title={fmt(v)} style={{ 
+                                        width: '100%', 
+                                        maxWidth: 48,
+                                        height: `${(v / maxChartVal) * 100}%`, 
+                                        background: v > 0 ? ACCENT : 'transparent', 
+                                        borderRadius: '4px 4px 0 0', 
+                                        transition: 'all 0.3s ease',
+                                        minHeight: v > 0 ? 4 : 0,
+                                        cursor: 'pointer'
+                                    }}
+                                    onMouseEnter={e => e.currentTarget.style.opacity = 0.8}
+                                    onMouseLeave={e => e.currentTarget.style.opacity = 1}
+                                    />
+                                    
+                                    <span style={{ 
+                                        position: 'absolute', bottom: -10,
+                                        fontSize: 11, color: TEXT3, fontWeight: 500,
+                                        whiteSpace: 'nowrap',
+                                        transform: labels.length > 15 ? 'translateY(16px) rotate(-45deg)' : 'translateY(16px)',
+                                        transformOrigin: labels.length > 15 ? 'top right' : 'center'
+                                    }}>
+                                        {labels[i]}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
-                {/* TABLAS */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
+                {/* LISTAS SECUNDARIAS */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 24 }}>
 
-                    {/* Top productos */}
-                    <div style={{ background: WHITE, borderRadius: 18, border: `1px solid ${BORDER}`, boxShadow: SHADOW, overflow: 'hidden' }}>
-                        <div style={{ padding: '18px 24px', borderBottom: `1px solid #f3f4f6`, background: '#fafafa', display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <div style={{ width: 32, height: 32, borderRadius: 9, background: '#ede9fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <ShoppingBag size={16} style={{ color: '#7c3aed' }} />
-                            </div>
+                    {/* Top Productos */}
+                    <div style={{ background: WHITE, borderRadius: 16, border: `1px solid ${BORDER}`, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ padding: '20px 24px', borderBottom: `1px solid #F3F4F6`, display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <ShoppingBag size={18} color={TEXT2} />
                             <div>
-                                <div style={{ fontSize: 14, fontWeight: 700, color: TEXT1 }}>Más Vendidos</div>
-                                <div style={{ fontSize: 11, color: TEXT3, fontWeight: 500 }}>Por cantidad de unidades</div>
+                                <div style={{ fontSize: 15, fontWeight: 600, color: TEXT1 }}>Productos más vendidos</div>
+                                <div style={{ fontSize: 13, color: TEXT3 }}>Por cantidad de unidades</div>
                             </div>
                         </div>
-                        <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        <div style={{ padding: '12px 24px 24px' }}>
                             {topList.length === 0 ? (
-                                <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: TEXT3, fontSize: 14 }}>No hay datos</div>
+                                <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: TEXT3, fontSize: 14 }}>Sin información de productos</div>
                             ) : topList.map(([name, data], i) => (
-                                <div key={i}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, marginBottom: 5 }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                            <span style={{ width: 20, height: 20, borderRadius: 6, background: i === 0 ? '#fef3c7' : i === 1 ? '#f3f4f6' : '#f8fafc', color: i === 0 ? '#d97706' : i === 1 ? '#6b7280' : TEXT3, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{i + 1}</span>
-                                            <span style={{ fontWeight: 600, color: TEXT1 }}>{name}</span>
-                                        </div>
-                                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                                            <span style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed', background: '#ede9fe', padding: '2px 8px', borderRadius: 6 }}>{data.qty}u</span>
-                                            <span style={{ fontSize: 12, color: TEXT3 }}>{fmt(data.rev)}</span>
-                                        </div>
-                                    </div>
-                                    <div style={{ height: 6, background: '#f3f4f6', borderRadius: 3, overflow: 'hidden' }}>
-                                        <div style={{ width: `${(data.qty / maxQ) * 100}%`, height: '100%', background: 'linear-gradient(90deg,#7c3aed 0%,#4f46e5 100%)', borderRadius: 3, transition: 'width 0.3s ease' }} />
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: i < topList.length - 1 ? `1px solid #F3F4F6` : 'none' }}>
+                                    <span style={{ width: 24, fontSize: 14, fontWeight: 600, color: TEXT3, textAlign: 'center' }}>{i + 1}</span>
+                                    <span style={{ fontSize: 14, fontWeight: 500, color: TEXT1, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                                        <span style={{ fontSize: 14, fontWeight: 600, color: TEXT1 }}>{data.qty} u.</span>
+                                        <span style={{ fontSize: 12, color: TEXT3 }}>{fmt(data.rev)}</span>
                                     </div>
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    {/* Mayor ganancia */}
-                    <div style={{ background: WHITE, borderRadius: 18, border: `1px solid ${BORDER}`, boxShadow: SHADOW, overflow: 'hidden' }}>
-                        <div style={{ padding: '18px 24px', borderBottom: `1px solid #f3f4f6`, background: '#fafafa', display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <div style={{ width: 32, height: 32, borderRadius: 9, background: GREEN_L, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <TrendingUp size={16} style={{ color: GREEN }} />
-                            </div>
+                    {/* Mayor Ganancia */}
+                    <div style={{ background: WHITE, borderRadius: 16, border: `1px solid ${BORDER}`, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ padding: '20px 24px', borderBottom: `1px solid #F3F4F6`, display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <TrendingUp size={18} color={GREEN} />
                             <div>
-                                <div style={{ fontSize: 14, fontWeight: 700, color: TEXT1 }}>Mayor Ganancia</div>
-                                <div style={{ fontSize: 11, color: TEXT3, fontWeight: 500 }}>Top 5 por ganancia neta</div>
+                                <div style={{ fontSize: 15, fontWeight: 600, color: TEXT1 }}>Mayor rentabilidad</div>
+                                <div style={{ fontSize: 13, color: TEXT3 }}>Top 5 por margen de ganancia</div>
                             </div>
                         </div>
-                        <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ padding: '12px 24px 24px' }}>
                             {profitList.length === 0 ? (
-                                <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: TEXT3, fontSize: 14 }}>No hay datos</div>
+                                <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: TEXT3, fontSize: 14 }}>Sin información de rentabilidad</div>
                             ) : profitList.map((item, i) => (
-                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: i === 0 ? '#f0fdf4' : '#fafafa', borderRadius: 10, border: `1px solid ${i === 0 ? '#86efac' : BORDER}` }}>
-                                    <span style={{ width: 24, height: 24, borderRadius: 7, background: i === 0 ? GREEN_L : '#f3f4f6', color: i === 0 ? GREEN : TEXT3, fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{i + 1}</span>
-                                    <span style={{ fontWeight: 600, color: TEXT1, flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
-                                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                                        <div style={{ fontSize: 14, fontWeight: 800, color: GREEN }}>{fmt(item.profit)}</div>
-                                        <div style={{ fontSize: 11, color: TEXT3 }}>ventas: {fmt(item.rev)}</div>
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: i < profitList.length - 1 ? `1px solid #F3F4F6` : 'none' }}>
+                                    <span style={{ width: 24, fontSize: 14, fontWeight: 600, color: TEXT3, textAlign: 'center' }}>{i + 1}</span>
+                                    <span style={{ fontSize: 14, fontWeight: 500, color: TEXT1, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                                        <span style={{ fontSize: 14, fontWeight: 600, color: GREEN }}>+{fmt(item.profit)}</span>
+                                        <span style={{ fontSize: 12, color: TEXT3 }}>Venta brute: {fmt(item.rev)}</span>
                                     </div>
                                 </div>
                             ))}
                         </div>
                     </div>
+
                 </div>
             </div>
         </div>

@@ -1,7 +1,8 @@
 import './index.css';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useStore } from './store';
 import { useLicense } from './useLicense';
+import { loadFromCloud, scheduleSave } from './db';
 
 import LoginPage from './components/LoginPage';
 import Topbar from './components/Topbar';
@@ -23,9 +24,81 @@ function App() {
   const currentUser = useStore((state) => state.currentUser);
   const toast = useStore((state) => state.toast);
   const clientKey = useStore((state) => state.clientKey);
+  const setClientKey = useStore((state) => state.setClientKey);
+  const showActivation = useStore(s => s.showActivation);
+  const setShowActivation = useStore(s => s.setShowActivation);
   const [showAdmin, setShowAdmin] = useState(false);
+  // null = esperando machine ID, string = listo
+  const [resolvedKey, setResolvedKey] = useState(null);
+  const [cloudLoaded, setCloudLoaded] = useState(false);
+  const syncedRef = useRef(false);
 
-  const { status, licenseInfo, recheck } = useLicense(clientKey);
+  useEffect(() => {
+    const resolveKey = async (key) => {
+      // Cargar datos desde la nube si hay conexión
+      try {
+        const cloud = await loadFromCloud(key);
+        if (cloud) {
+          const s = useStore.getState();
+          // Solo sobreescribir si la nube tiene datos (no vacío)
+          useStore.setState({
+            ...(cloud.productos?.length     ? { products:      cloud.productos }     : {}),
+            ...(cloud.categorias?.length    ? { categorias:    cloud.categorias }    : {}),
+            ...(cloud.usuarios?.length      ? { usuarios:      cloud.usuarios }      : {}),
+            ...(cloud.ventas?.length        ? { sales:         cloud.ventas }        : {}),
+            ...(cloud.caja_movs?.length     ? { cajaMovs:      cloud.caja_movs }    : {}),
+            ...(cloud.logs?.length          ? { logs:          cloud.logs }          : {}),
+            ...(Object.keys(cloud.configuracion || {}).length ? { configuracion: { ...s.configuracion, ...cloud.configuracion } } : {}),
+            ...(cloud.counters ? {
+              nextId:       cloud.counters.nextId      || s.nextId,
+              nextUserId:   cloud.counters.nextUserId  || s.nextUserId,
+              saleCounter:  cloud.counters.saleCounter || s.saleCounter,
+              cajaTotal:    cloud.counters.cajaTotal   ?? s.cajaTotal,
+              cajaApertura: cloud.counters.cajaApertura ?? s.cajaApertura,
+              cajaAbierta:  cloud.counters.cajaAbierta ?? s.cajaAbierta,
+            } : {}),
+          });
+        }
+      } catch (e) {
+        console.warn('[App] No se pudo cargar datos de la nube:', e.message);
+      }
+      setCloudLoaded(true);
+    };
+
+    if (window.electronAPI?.getMachineId) {
+      window.electronAPI.getMachineId().then((machineId) => {
+        const key = machineId || clientKey;
+        if (machineId) setClientKey(machineId);
+        setResolvedKey(key);
+        resolveKey(key);
+      });
+    } else {
+      setResolvedKey(clientKey);
+      resolveKey(clientKey);
+    }
+  }, []);
+
+  // Suscribirse a cambios del store y sincronizar con la nube
+  useEffect(() => {
+    if (!resolvedKey || syncedRef.current) return;
+    syncedRef.current = true;
+
+    const unsub = useStore.subscribe((state, prev) => {
+      // Solo sincronizar si cambió algo relevante (no el carrito ni toast)
+      const changed =
+        state.products    !== prev.products    ||
+        state.categorias  !== prev.categorias  ||
+        state.usuarios    !== prev.usuarios    ||
+        state.sales       !== prev.sales       ||
+        state.cajaMovs    !== prev.cajaMovs    ||
+        state.configuracion !== prev.configuracion ||
+        state.logs        !== prev.logs;
+      if (changed) scheduleSave(resolvedKey, useStore.getState);
+    });
+    return () => unsub();
+  }, [resolvedKey]);
+
+  const { status, licenseInfo, recheck } = useLicense(resolvedKey);
 
   const toastIcons = {
     success: <CheckCircle size={18} />,
@@ -36,16 +109,30 @@ function App() {
 
   const toastClass = toast.type || 'info';
 
+  // ── Carga inicial desde la nube ─────────────────────────────────────────
+  if (!cloudLoaded && resolvedKey) {
+    return (
+      <div style={{
+        position: 'fixed', inset: 0, background: '#ffffff',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '16px',
+      }}>
+        <div style={{ width: 40, height: 40, border: '3px solid #111827', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        <p style={{ color: '#111827', fontSize: '14px', fontWeight: 500 }}>Sincronizando datos...</p>
+        <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+      </div>
+    );
+  }
+
   // ── Chequeo de licencia ──────────────────────────────────────────────────
   // Mientras carga, mostrar pantalla en blanco
   if (status === 'loading') {
     return (
       <div style={{
-        position: 'fixed', inset: 0, background: '#0f0c29',
+        position: 'fixed', inset: 0, background: '#ffffff',
         display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '16px',
       }}>
-        <div style={{ width: 40, height: 40, border: '3px solid #4f46e5', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-        <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px' }}>Verificando licencia...</p>
+        <div style={{ width: 40, height: 40, border: '3px solid #111827', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        <p style={{ color: '#111827', fontSize: '14px', fontWeight: 500 }}>Verificando licencia...</p>
         <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
       </div>
     );
@@ -95,7 +182,7 @@ function App() {
 
   return (
     <>
-      <Topbar />
+      <Topbar licenseInfo={licenseInfo} />
       <div className="main-area">
         <PosPage />
         <ProductosPage />
@@ -107,7 +194,7 @@ function App() {
           <>
             <UsuariosPage />
             <LogsPage />
-            <ConfigPage onOpenAdmin={() => setShowAdmin(true)} />
+            <ConfigPage onOpenAdmin={() => setShowAdmin(true)} licenseInfo={licenseInfo} licenseStatus={status} />
           </>
         )}
       </div>
@@ -120,6 +207,19 @@ function App() {
 
       {/* Modal admin licencias */}
       {showAdmin && <AdminLicencias onClose={() => setShowAdmin(false)} />}
+      
+      {/* Visualizar pantalla de pago manual */}
+      {showActivation && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 99999 }}>
+          <ActivationScreen clientKey={clientKey} licenseInfo={licenseInfo} onRecheck={recheck} />
+          <button
+             onClick={() => setShowActivation(false)}
+             style={{ position: 'fixed', top: 20, right: 20, background: '#222', color: '#fff', border: '1px solid #444', padding: '8px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, zIndex: 100000 }}
+          >
+            ✕ Cerrar ventana de pago
+          </button>
+        </div>
+      )}
 
       {/* Aviso si está en modo gracia (sin internet) */}
       {status === 'grace' && (

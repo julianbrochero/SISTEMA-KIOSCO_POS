@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '../store';
-import { Delete, LogIn, AlertCircle, ShieldCheck } from 'lucide-react';
+import { Delete, LogIn, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
     const login = useStore(s => s.login);
@@ -32,7 +32,7 @@ export default function LoginPage() {
             const ok = login(p);
             if (!ok) {
                 setShake(true);
-                setError('PIN incorrecto. Intentá de nuevo.');
+                setError('PIN incorrecto. Intenta de nuevo.');
                 setPin('');
                 setTimeout(() => setShake(false), 600);
             }
@@ -55,7 +55,7 @@ export default function LoginPage() {
     return (
         <div style={{
             minHeight: '100vh',
-            background: '#111111',
+            background: '#ffffff',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -66,30 +66,27 @@ export default function LoginPage() {
                 maxWidth: 360,
                 padding: '0 16px',
             }}>
-                {/* Logo / título */}
                 <div style={{ textAlign: 'center', marginBottom: 32 }}>
                     <img
-                        src="/favicon.png"
+                        src="/_preview.png"
                         alt="Logo"
                         style={{ width: 56, height: 56, borderRadius: 16, objectFit: 'contain', margin: '0 auto 16px', display: 'block' }}
                     />
-                    <div style={{ fontSize: 20, fontWeight: 700, color: '#ffffff', letterSpacing: '-0.3px' }}>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: '#111827', letterSpacing: '-0.3px' }}>
                         {configuracion.nombreKiosco}
                     </div>
-                    <div style={{ fontSize: 13, color: '#555', marginTop: 4 }}>
-                        Ingresá tu PIN para acceder
+                    <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
+                        Ingresa tu PIN para acceder
                     </div>
                 </div>
 
-                {/* Card */}
                 <div style={{
-                    background: '#1a1a1a',
-                    border: '1px solid #252525',
+                    background: '#ffffff',
+                    border: '1px solid #e5e7eb',
                     borderRadius: 20,
                     padding: '28px 24px',
-                    boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+                    boxShadow: '0 8px 30px rgba(17,24,39,0.10)',
                 }}>
-                    {/* Puntos PIN */}
                     <div style={{
                         display: 'flex',
                         justifyContent: 'center',
@@ -101,27 +98,25 @@ export default function LoginPage() {
                             <div key={i} style={{
                                 width: 14, height: 14,
                                 borderRadius: '50%',
-                                background: i < pin.length ? '#ffffff' : '#2a2a2a',
-                                border: `2px solid ${i < pin.length ? '#ffffff' : '#333'}`,
+                                background: i < pin.length ? '#111827' : '#f3f4f6',
+                                border: `2px solid ${i < pin.length ? '#111827' : '#d1d5db'}`,
                                 transition: 'all 0.15s',
                                 transform: i < pin.length ? 'scale(1.1)' : 'scale(1)',
                             }} />
                         ))}
                     </div>
 
-                    {/* Error */}
                     {error && (
                         <div style={{
                             display: 'flex', alignItems: 'center', gap: 6,
-                            background: '#2a1515', border: '1px solid #3d1a1a',
+                            background: '#fef2f2', border: '1px solid #fecaca',
                             borderRadius: 8, padding: '8px 12px',
-                            color: '#f87171', fontSize: 12, marginBottom: 16,
+                            color: '#dc2626', fontSize: 12, marginBottom: 16,
                         }}>
                             <AlertCircle size={13} /> {error}
                         </div>
                     )}
 
-                    {/* Teclado numérico */}
                     <div style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(3, 1fr)',
@@ -142,9 +137,9 @@ export default function LoginPage() {
                                     style={{
                                         height: 52,
                                         borderRadius: 10,
-                                        border: '1px solid #2a2a2a',
-                                        background: isClear ? '#1f1010' : isDel ? '#1a1a1a' : '#222',
-                                        color: isClear ? '#f87171' : '#ffffff',
+                                        border: '1px solid #e5e7eb',
+                                        background: isClear ? '#fef2f2' : '#f9fafb',
+                                        color: isClear ? '#dc2626' : '#111827',
                                         fontSize: isClear || isDel ? 13 : 20,
                                         fontWeight: 600,
                                         cursor: 'pointer',
@@ -154,9 +149,9 @@ export default function LoginPage() {
                                         justifyContent: 'center',
                                         fontFamily: 'inherit',
                                     }}
-                                    onMouseDown={e => e.currentTarget.style.background = '#333'}
-                                    onMouseUp={e => e.currentTarget.style.background = isClear ? '#1f1010' : isDel ? '#1a1a1a' : '#222'}
-                                    onMouseLeave={e => e.currentTarget.style.background = isClear ? '#1f1010' : isDel ? '#1a1a1a' : '#222'}
+                                    onMouseDown={e => e.currentTarget.style.background = isClear ? '#fee2e2' : '#f3f4f6'}
+                                    onMouseUp={e => e.currentTarget.style.background = isClear ? '#fef2f2' : '#f9fafb'}
+                                    onMouseLeave={e => e.currentTarget.style.background = isClear ? '#fef2f2' : '#f9fafb'}
                                 >
                                     {isDel ? <Delete size={18} /> : k}
                                 </button>
@@ -164,15 +159,14 @@ export default function LoginPage() {
                         })}
                     </div>
 
-                    {/* Botón ingresar */}
                     <button
                         onClick={() => tryLogin()}
                         disabled={pin.length === 0 || loading}
                         style={{
                             width: '100%', height: 48,
                             borderRadius: 10, border: 'none',
-                            background: pin.length > 0 ? '#ffffff' : '#222',
-                            color: pin.length > 0 ? '#111' : '#444',
+                            background: pin.length > 0 ? '#111827' : '#e5e7eb',
+                            color: pin.length > 0 ? '#ffffff' : '#9ca3af',
                             fontSize: 14, fontWeight: 700,
                             cursor: pin.length > 0 ? 'pointer' : 'not-allowed',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -185,11 +179,6 @@ export default function LoginPage() {
                     </button>
                 </div>
 
-                <div style={{ textAlign: 'center', marginTop: 16, fontSize: 12, color: '#333' }}>
-                    Admin: <span style={{ color: '#444' }}>0000</span>
-                    &nbsp;·&nbsp;
-                    Cajero: <span style={{ color: '#444' }}>1234</span>
-                </div>
             </div>
 
             <style>{`

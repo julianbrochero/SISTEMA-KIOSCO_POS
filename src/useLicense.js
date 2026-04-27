@@ -1,24 +1,28 @@
 import { useEffect, useState, useCallback } from 'react';
-import { supabase } from './supabase';
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const CACHE_KEY = 'kiosco_lic_cache';
-const GRACE_DAYS = 3;         // días offline permitidos
-const CHECK_INTERVAL = 4 * 60 * 60 * 1000; // 4 horas
+const GRACE_DAYS = 3;
+const CHECK_INTERVAL = 4 * 60 * 60 * 1000;
 
-// En modo desarrollo siempre está activo — para producción se verifica en Supabase
 const IS_DEV = import.meta.env.DEV;
 
-/**
- * Hook que verifica la licencia contra Supabase.
- *
- * Retorna:
- *  status: 'loading' | 'active' | 'grace' | 'expired' | 'no_key'
- *  licenseInfo: { nombre, vencimiento, diasRestantes, monto } | null
- *  recheck: función para forzar re-verificación
- */
+async function querySupabase(path) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  if (!res.ok) throw new Error(`Supabase error ${res.status}`);
+  return res.json();
+}
+
 export function useLicense(clientKey) {
-  const [status, setStatus] = useState(IS_DEV ? 'active' : 'loading');
-  const [licenseInfo, setLicenseInfo] = useState(IS_DEV ? { nombre: 'Modo desarrollo' } : null);
+  const [status, setStatus] = useState('loading');
+  const [licenseInfo, setLicenseInfo] = useState(null);
 
   const applyCache = useCallback(() => {
     const raw = localStorage.getItem(CACHE_KEY);
@@ -39,17 +43,21 @@ export function useLicense(clientKey) {
   }, []);
 
   const check = useCallback(async () => {
+    if (clientKey === null || clientKey === undefined) return; // esperando machine ID
     if (!clientKey) { setStatus('no_key'); return; }
 
     try {
-      // 1. Buscar cliente por client_key
-      const { data: cliente, error: errCliente } = await supabase
-        .from('clientes')
-        .select('id, nombre_negocio, activo')
-        .eq('client_key', clientKey)
-        .maybeSingle();
+      // 1. Buscar cliente
+      const clientes = await querySupabase(
+        `clientes?client_key=eq.${clientKey}&select=id,nombre_negocio,activo&limit=1`
+      );
 
-      if (errCliente || !cliente) { applyCache(); return; }
+      if (!clientes || clientes.length === 0) { 
+        localStorage.removeItem(CACHE_KEY);
+        setStatus('no_key'); 
+        return; 
+      }
+      const cliente = clientes[0];
 
       if (!cliente.activo) {
         setStatus('expired');
@@ -57,26 +65,23 @@ export function useLicense(clientKey) {
         return;
       }
 
-      // 2. Buscar la licencia más reciente
-      const { data: lic, error: errLic } = await supabase
-        .from('licencias')
-        .select('fecha_vencimiento, pagado, monto')
-        .eq('cliente_id', cliente.id)
-        .order('fecha_vencimiento', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      // 2. Buscar licencia más reciente
+      const licencias = await querySupabase(
+        `licencias?cliente_id=eq.${cliente.id}&select=fecha_vencimiento,pagado,monto&order=fecha_vencimiento.desc&limit=1`
+      );
 
-      if (errLic || !lic) {
+      if (!licencias || licencias.length === 0) {
         setStatus('expired');
         setLicenseInfo({ nombre: cliente.nombre_negocio });
         return;
       }
+      const lic = licencias[0];
 
       const hoy = new Date();
       hoy.setHours(0, 0, 0, 0);
       const vence = new Date(lic.fecha_vencimiento + 'T00:00:00');
       const diasRestantes = Math.ceil((vence - hoy) / 86400000);
-      const activa = diasRestantes > 0 && lic.pagado;
+      const activa = diasRestantes > 0;
 
       const info = {
         nombre: cliente.nombre_negocio,
@@ -89,24 +94,23 @@ export function useLicense(clientKey) {
       setLicenseInfo(info);
       setStatus(activa ? 'active' : 'expired');
 
-      // Guardar cache
       localStorage.setItem(CACHE_KEY, JSON.stringify({
         status: activa ? 'active' : 'expired',
         checkedAt: Date.now(),
         info,
       }));
 
-    } catch {
+    } catch (err) {
+      console.error('[License] fetch error:', err);
       applyCache();
     }
   }, [clientKey, applyCache]);
 
   useEffect(() => {
-    if (IS_DEV) return; // en desarrollo no chequea
     check();
     const interval = setInterval(check, CHECK_INTERVAL);
     return () => clearInterval(interval);
-  }, [check]);
+  }, [check, clientKey]);
 
   return { status, licenseInfo, recheck: check };
 }

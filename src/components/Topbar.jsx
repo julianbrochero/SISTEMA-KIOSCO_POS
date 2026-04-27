@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useStore } from '../store';
+const logoUrl = '/_preview.png';
 import {
     ShoppingCart, Package, Clock, Tag, Wallet,
     BarChart2, Users, FileText, Settings,
     User, ShieldCheck, LogOut, DollarSign, ChevronDown,
-    Store,
+    Menu, X, Bell, Zap, BellRing, Sparkles
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -19,24 +20,28 @@ const NAV_ITEMS = [
     { id: 'config',    label: 'Config',     icon: Settings,     roles: ['admin'] },
 ];
 
-export default function Topbar() {
+export default function Topbar({ licenseInfo }) {
     const [userMenuOpen, setUserMenuOpen] = useState(false);
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const activePage    = useStore((s) => s.activePage);
     const setActivePage = useStore((s) => s.setActivePage);
     const cajaTotal     = useStore((s) => s.cajaTotal);
     const cajaAbierta   = useStore((s) => s.cajaAbierta);
     const currentUser   = useStore((s) => s.currentUser);
     const logout        = useStore((s) => s.logout);
+    const setShowActivation = useStore(s => s.setShowActivation);
+
+    const userMenuRef = useRef(null);
 
     useEffect(() => {
         const handler = (e) => {
-            if (!e.target.closest('.user-menu-wrap')) setUserMenuOpen(false);
+            if (userMenuRef.current && !userMenuRef.current.contains(e.target)) setUserMenuOpen(false);
         };
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
-    // Ctrl + ← / → para cambiar de módulo (funciona desde cualquier lugar)
+    // Ctrl + ← / → para cambiar de módulo
     useEffect(() => {
         const btns = NAV_ITEMS.filter(b => b.roles.includes(currentUser?.rol));
         const handler = (e) => {
@@ -55,223 +60,509 @@ export default function Topbar() {
     }, [activePage, currentUser]);
 
     const btns = NAV_ITEMS.filter(b => b.roles.includes(currentUser?.rol));
+    const activeItem = NAV_ITEMS.find(i => i.id === activePage);
 
     return (
-        <div style={{
-            padding: '0 24px',
-            background: '#0f1117',
-            flexShrink: 0,
-            zIndex: 50,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 0,
-            height: 56,
-            borderBottom: '1px solid rgba(255,255,255,0.07)',
-        }}>
-
+        <header className="tb-header">
             {/* ── Logo ── */}
-            <button
-                onClick={() => setActivePage('pos')}
-                style={{
-                    display: 'flex', alignItems: 'center', gap: 9,
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    padding: '0 24px 0 0', marginRight: 8, flexShrink: 0,
-                    borderRight: '1px solid rgba(255,255,255,0.08)',
-                    height: '100%',
-                }}
-            >
-                <img
-                    src="/favicon.png"
-                    alt="Logo"
-                    style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, objectFit: 'contain' }}
-                />
-                <span style={{
-                    fontWeight: 700, fontSize: 15, letterSpacing: '-0.3px',
-                    color: '#ffffff',
-                }}>
-                    Gestify
-                </span>
-            </button>
+            <div className="tb-brand" onClick={() => setActivePage('pos')}>
+                <div className="tb-logo-cube">
+                    <img src={logoUrl} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                </div>
+                <span className="tb-logo-text">Gestify</span>
+            </div>
 
-            {/* ── Nav ── */}
-            <nav style={{
-                display: 'flex', alignItems: 'stretch', gap: 0,
-                flex: 1, overflowX: 'auto', scrollbarWidth: 'none',
-                height: '100%',
-            }}>
+            {/* ── Nav (Desktop) ── */}
+            <nav className="tb-nav">
                 {btns.map(({ id, label, icon: Icon }) => {
                     const active = activePage === id;
                     return (
                         <button
                             key={id}
+                            className={`tb-nav-item ${active ? 'active' : ''}`}
                             onClick={() => setActivePage(id)}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 6,
-                                padding: '0 16px',
-                                border: 'none',
-                                borderBottom: active ? '2px solid #818cf8' : '2px solid transparent',
-                                borderTop: '2px solid transparent',
-                                cursor: 'pointer',
-                                whiteSpace: 'nowrap',
-                                fontSize: 13,
-                                fontWeight: active ? 700 : 500,
-                                fontFamily: 'inherit',
-                                transition: 'all 0.15s',
-                                background: active ? 'rgba(99,102,241,0.12)' : 'transparent',
-                                color: active ? '#ffffff' : '#d1d5db',
-                                flexShrink: 0,
-                                borderRadius: 0,
-                            }}
-                            onMouseEnter={e => { if (!active) { e.currentTarget.style.color = '#f3f4f6'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; } }}
-                            onMouseLeave={e => { if (!active) { e.currentTarget.style.color = '#d1d5db'; e.currentTarget.style.background = 'transparent'; } }}
+                            title={label}
                         >
-                            <Icon size={14} strokeWidth={active ? 2.5 : 1.8} />
-                            {label}
+                            <Icon size={16} strokeWidth={active ? 2.5 : 2} className="tb-nav-icon" />
+                            <span className="tb-nav-label">{label}</span>
+                            {active && <span className="tb-nav-indicator" />}
                         </button>
                     );
                 })}
             </nav>
 
             {/* ── Derecha ── */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-
-                {/* Caja badge */}
-                <button
-                    onClick={() => setActivePage('caja')}
-                    style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                        padding: '5px 12px',
-                        borderRadius: 6,
-                        border: `1px solid ${cajaAbierta ? 'rgba(52,211,153,0.25)' : 'rgba(248,113,113,0.25)'}`,
-                        cursor: 'pointer',
-                        fontSize: 12,
-                        fontWeight: 600,
-                        fontFamily: 'inherit',
-                        flexShrink: 0,
-                        transition: 'all 0.15s',
-                        background: cajaAbierta ? 'rgba(52,211,153,0.08)' : 'rgba(248,113,113,0.08)',
-                        color: cajaAbierta ? '#34d399' : '#f87171',
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.opacity = '0.8'; }}
-                    onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
-                >
-                    <span style={{
-                        width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
-                        background: cajaAbierta ? '#34d399' : '#f87171',
-                        boxShadow: cajaAbierta ? '0 0 4px #34d399' : '0 0 4px #f87171',
-                    }} />
-                    <DollarSign size={11} strokeWidth={2.5} />
-                    {cajaAbierta ? `$${cajaTotal.toLocaleString('es-AR')}` : 'CERRADA'}
+            <div className="tb-right">
+                
+                {/* Opcional: Notificaciones extraíble */}
+                <button className="tb-icon-btn d-none-mobile" title="Notificaciones">
+                    <Bell size={18} strokeWidth={2} />
+                    <span className="tb-badge-dot"></span>
                 </button>
 
-                {/* Divider */}
-                <div style={{ width: 1, height: 18, background: 'rgba(255,255,255,0.1)', flexShrink: 0 }} />
-
-                {/* User menu */}
-                <div className="user-menu-wrap" style={{ position: 'relative', flexShrink: 0 }}>
+                {/* Botón Suscripción */}
+                {licenseInfo?.diasRestantes !== undefined && !licenseInfo.pagado && licenseInfo.diasRestantes > 0 && currentUser?.rol === 'admin' && (
                     <button
-                        onClick={() => setUserMenuOpen(o => !o)}
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: 8,
-                            padding: '4px 8px 4px 4px',
-                            borderRadius: 8,
-                            border: '1px solid rgba(255,255,255,0.1)',
-                            background: userMenuOpen ? 'rgba(255,255,255,0.08)' : 'transparent',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s',
-                        }}
-                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'; }}
-                        onMouseLeave={e => { if (!userMenuOpen) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; } }}
+                        className="tb-trial-btn"
+                        onClick={() => setShowActivation(true)}
                     >
-                        <div style={{
-                            width: 26, height: 26, borderRadius: 6,
-                            background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            flexShrink: 0,
-                        }}>
-                            {currentUser?.rol === 'admin'
-                                ? <ShieldCheck size={12} color="#fff" strokeWidth={2.5} />
-                                : <User size={12} color="#fff" strokeWidth={2.5} />
-                            }
+                        <Sparkles size={14} className="tb-trial-icon" />
+                        <span className="tb-trial-text">Prueba: {licenseInfo.diasRestantes} días</span>
+                    </button>
+                )}
+
+                {/* Caja Indicator */}
+                <button className={`tb-caja-pill ${cajaAbierta ? 'open' : 'closed'}`} onClick={() => setActivePage('caja')}>
+                    <span className="tb-caja-dot" />
+                    <DollarSign size={14} strokeWidth={2.5} />
+                    <span className="tb-caja-val">
+                        {cajaAbierta ? `${cajaTotal.toLocaleString('es-AR')}` : 'CERRADA'}
+                    </span>
+                </button>
+
+                <div className="tb-divider d-none-mobile" />
+
+                {/* Dropdown Usuario */}
+                <div className="tb-user-wrap" ref={userMenuRef}>
+                    <button className="tb-user-toggle" onClick={() => setUserMenuOpen(!userMenuOpen)}>
+                        <div className="tb-avatar">
+                            {currentUser?.rol === 'admin' ? <ShieldCheck size={14} /> : <User size={14} />}
                         </div>
-                        <span style={{ fontSize: 13, fontWeight: 500, color: '#e5e7eb', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span className="tb-user-name d-none-mobile">
                             {currentUser?.nombre?.split(' ')[0]}
                         </span>
-                        <ChevronDown size={12} color="#6b7280" style={{ flexShrink: 0, transform: userMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+                        <ChevronDown size={14} className={`tb-user-chevron ${userMenuOpen ? 'open' : ''}`} />
                     </button>
 
                     {userMenuOpen && (
-                        <div style={{
-                            position: 'absolute', right: 0, top: 'calc(100% + 8px)',
-                            width: 210,
-                            background: '#1a1d27',
-                            border: '1px solid rgba(255,255,255,0.1)',
-                            borderRadius: 12,
-                            boxShadow: '0 16px 48px rgba(0,0,0,0.4)',
-                            overflow: 'hidden',
-                            zIndex: 1000,
-                        }}>
-                            {/* Info usuario */}
-                            <div style={{
-                                display: 'flex', alignItems: 'center', gap: 10,
-                                padding: '12px 12px 10px',
-                                borderBottom: '1px solid rgba(255,255,255,0.07)',
-                            }}>
-                                <div style={{
-                                    width: 36, height: 36, borderRadius: 8, flexShrink: 0,
-                                    background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                }}>
-                                    {currentUser?.rol === 'admin'
-                                        ? <ShieldCheck size={16} color="#fff" />
-                                        : <User size={16} color="#fff" />
-                                    }
+                        <div className="tb-dropdown">
+                            <div className="tb-dropdown-header">
+                                <div className="tb-avatar large">
+                                    {currentUser?.rol === 'admin' ? <ShieldCheck size={18} /> : <User size={18} />}
                                 </div>
-                                <div style={{ overflow: 'hidden' }}>
-                                    <div style={{ fontWeight: 600, fontSize: 13, color: '#f9fafb', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {currentUser?.nombre}
-                                    </div>
-                                    <div style={{ fontSize: 11, color: '#6366f1', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600, marginTop: 2 }}>
-                                        {currentUser?.rol}
-                                    </div>
+                                <div className="tb-dropdown-info">
+                                    <div className="tb-dropdown-name">{currentUser?.nombre}</div>
+                                    <div className="tb-dropdown-role">{currentUser?.rol}</div>
                                 </div>
                             </div>
-
-                            {/* Opciones */}
-                            <div style={{ padding: '6px' }}>
+                            <div className="tb-dropdown-body">
                                 {currentUser?.rol === 'admin' && (
-                                    <button
-                                        onClick={() => { setActivePage('config'); setUserMenuOpen(false); }}
-                                        style={{
-                                            width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                                            padding: '8px 10px', borderRadius: 8, border: 'none',
-                                            background: 'transparent', cursor: 'pointer', color: '#d1d5db',
-                                            fontSize: 13, fontFamily: 'inherit', transition: 'background 0.12s',
-                                        }}
-                                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
-                                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                                    >
-                                        <Settings size={13} color="#6b7280" /> Configuración
+                                    <button className="tb-dropdown-item" onClick={() => { setActivePage('config'); setUserMenuOpen(false); }}>
+                                        <Settings size={15} /> Configuración de negocio
                                     </button>
                                 )}
-                                <button
-                                    onClick={() => { setUserMenuOpen(false); logout(); }}
-                                    style={{
-                                        width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                                        padding: '8px 10px', borderRadius: 8, border: 'none',
-                                        background: 'transparent', cursor: 'pointer', color: '#f87171',
-                                        fontSize: 13, fontFamily: 'inherit', transition: 'background 0.12s',
-                                    }}
-                                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(248,113,113,0.08)'; }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                                >
-                                    <LogOut size={13} color="#f87171" /> Cerrar sesión
+                                <div className="tb-dropdown-separator" />
+                                <button className="tb-dropdown-item danger" onClick={() => { setUserMenuOpen(false); logout(); }}>
+                                    <LogOut size={15} /> Cerrar sesión
                                 </button>
                             </div>
                         </div>
                     )}
                 </div>
+
+                {/* Menú Hamburguesa */}
+                <button className="tb-hamburger" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+                    {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+                </button>
             </div>
-        </div>
+
+            {/* Mobile Drawer */}
+            {mobileMenuOpen && (
+                <div className="tb-mobile-drawer">
+                    <div className="tb-mobile-nav">
+                        {btns.map(({ id, label, icon: Icon }) => (
+                            <button
+                                key={id}
+                                className={`tb-mobile-item ${activePage === id ? 'active' : ''}`}
+                                onClick={() => { setActivePage(id); setMobileMenuOpen(false); }}
+                            >
+                                <Icon size={18} />
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            <style>{`
+                /* TOPBAR SAAS STYLES */
+                .tb-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    height: 60px;
+                    padding: 0 24px;
+                    background: #09090b; /* Muy oscuro premium */
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+                    position: relative;
+                    z-index: 100;
+                    flex-shrink: 0;
+                    color: #fff;
+                    font-family: 'Inter', sans-serif;
+                }
+
+                .tb-brand {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    cursor: pointer;
+                    margin-right: 32px;
+                }
+
+                .tb-logo-cube {
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 8px;
+                    background: #18181b;
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    overflow: hidden;
+                }
+
+                .tb-logo-text {
+                    font-size: 16px;
+                    font-weight: 800;
+                    letter-spacing: -0.5px;
+                    color: #fafafa;
+                }
+
+                /* Navegación Desktop */
+                .tb-nav {
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                    flex: 1;
+                    height: 100%;
+                }
+
+                .tb-nav-item {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 8px 14px;
+                    border: none;
+                    background: transparent;
+                    color: #a1a1aa; /* Zinc 400 */
+                    font-size: 13px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    border-radius: 6px;
+                    transition: all 0.2s ease;
+                    position: relative;
+                }
+
+                .tb-nav-item:hover {
+                    color: #fafafa;
+                    background: rgba(255, 255, 255, 0.05);
+                }
+
+                .tb-nav-item.active {
+                    color: #fafafa;
+                    font-weight: 600;
+                    background: transparent;
+                }
+
+                .tb-nav-icon {
+                    transition: all 0.2s;
+                }
+
+                .tb-nav-indicator {
+                    position: absolute;
+                    bottom: -15px; /* Adjust based on parent height padding */
+                    left: 20%;
+                    right: 20%;
+                    height: 2px;
+                    background: #FAFAFA;
+                    border-radius: 2px 2px 0 0;
+                    box-shadow: 0 -2px 10px rgba(255,255,255,0.4);
+                }
+
+                .tb-right {
+                    display: flex;
+                    align-items: center;
+                    gap: 16px;
+                }
+
+                /* Icon Buttons */
+                .tb-icon-btn {
+                    background: transparent;
+                    border: none;
+                    color: #a1a1aa;
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    position: relative;
+                    transition: all 0.2s;
+                }
+                .tb-icon-btn:hover {
+                    background: rgba(255, 255, 255, 0.05);
+                    color: #fafafa;
+                }
+                .tb-badge-dot {
+                    position: absolute;
+                    top: 8px;
+                    right: 8px;
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 50%;
+                    background: #ef4444;
+                    border: 2px solid #09090b;
+                }
+
+                /* Suscripción Button */
+                .tb-trial-btn {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    background: linear-gradient(135deg, #f59e0b, #d97706);
+                    border: 1px solid rgba(255,255,255,0.2);
+                    padding: 6px 12px;
+                    border-radius: 20px;
+                    color: #fff;
+                    font-size: 12px;
+                    font-weight: 700;
+                    cursor: pointer;
+                    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
+                    transition: transform 0.2s;
+                }
+                .tb-trial-btn:hover {
+                    transform: translateY(-1px);
+                    filter: brightness(1.1);
+                }
+
+                /* Caja Pills */
+                .tb-caja-pill {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    padding: 6px 12px;
+                    border-radius: 6px;
+                    font-size: 13px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    border: 1px solid transparent;
+                    transition: all 0.2s;
+                    font-family: 'Inter', monospace;
+                }
+                .tb-caja-pill.open {
+                    background: rgba(16, 185, 129, 0.1);
+                    border-color: rgba(16, 185, 129, 0.2);
+                    color: #10b981;
+                }
+                .tb-caja-pill.closed {
+                    background: rgba(239, 68, 68, 0.1);
+                    border-color: rgba(239, 68, 68, 0.2);
+                    color: #ef4444;
+                }
+                .tb-caja-pill:hover {
+                    filter: brightness(1.2);
+                }
+                .tb-caja-dot {
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 50%;
+                }
+                .open .tb-caja-dot { background: #10b981; box-shadow: 0 0 6px #10b981; }
+                .closed .tb-caja-dot { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
+                .tb-caja-val { margin-left: 2px; }
+
+                .tb-divider {
+                    width: 1px;
+                    height: 20px;
+                    background: rgba(255, 255, 255, 0.1);
+                }
+
+                /* User Menu */
+                .tb-user-wrap {
+                    position: relative;
+                }
+                .tb-user-toggle {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    background: transparent;
+                    border: none;
+                    cursor: pointer;
+                    padding: 4px;
+                    border-radius: 8px;
+                    transition: all 0.2s;
+                }
+                .tb-user-toggle:hover {
+                    background: rgba(255, 255, 255, 0.05);
+                }
+                .tb-avatar {
+                    width: 28px;
+                    height: 28px;
+                    border-radius: 6px;
+                    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: #fff;
+                }
+                .tb-avatar.large {
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 10px;
+                }
+                .tb-user-name {
+                    font-size: 13px;
+                    font-weight: 500;
+                    color: #e4e4e7;
+                }
+                .tb-user-chevron {
+                    color: #a1a1aa;
+                    transition: transform 0.2s;
+                }
+                .tb-user-chevron.open {
+                    transform: rotate(180deg);
+                }
+
+                /* Dropdown Superior */
+                .tb-dropdown {
+                    position: absolute;
+                    top: calc(100% + 12px);
+                    right: 0;
+                    width: 240px;
+                    background: #18181b; /* Zinc 900 */
+                    border: 1px solid rgba(255,255,255,0.1);
+                    border-radius: 12px;
+                    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+                    overflow: hidden;
+                    animation: dropdownFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+                }
+                @keyframes dropdownFadeIn {
+                    from { opacity: 0; transform: translateY(-8px) scale(0.95); }
+                    to { opacity: 1; transform: none; }
+                }
+
+                .tb-dropdown-header {
+                    padding: 16px;
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    border-bottom: 1px solid rgba(255,255,255,0.05);
+                }
+                .tb-dropdown-name {
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: #fafafa;
+                }
+                .tb-dropdown-role {
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #60a5fa;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    margin-top: 2px;
+                }
+
+                .tb-dropdown-body {
+                    padding: 8px;
+                }
+                .tb-dropdown-item {
+                    width: 100%;
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    padding: 10px 12px;
+                    border: none;
+                    background: transparent;
+                    border-radius: 6px;
+                    color: #a1a1aa;
+                    font-size: 13px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+                .tb-dropdown-item:hover {
+                    background: rgba(255,255,255,0.05);
+                    color: #fafafa;
+                }
+                .tb-dropdown-item.danger:hover {
+                    background: rgba(239, 68, 68, 0.1);
+                    color: #ef4444;
+                }
+                .tb-dropdown-separator {
+                    height: 1px;
+                    background: rgba(255,255,255,0.05);
+                    margin: 4px 0;
+                }
+
+                /* Hamburguesa */
+                .tb-hamburger {
+                    display: none;
+                    background: transparent;
+                    border: none;
+                    color: #fafafa;
+                    cursor: pointer;
+                    padding: 4px;
+                }
+
+                /* Mobile Drawer */
+                .tb-mobile-drawer {
+                    display: none;
+                }
+
+                @media (max-width: 900px) {
+                    .tb-nav { display: none; }
+                    .d-none-mobile { display: none !important; }
+                    .tb-hamburger { display: block; }
+                    .tb-logo-text { display: none; }
+                    .tb-brand { margin-right: 12px; }
+
+                    .tb-mobile-drawer {
+                        display: block;
+                        position: absolute;
+                        top: 60px;
+                        left: 0;
+                        right: 0;
+                        background: #09090b;
+                        border-bottom: 1px solid rgba(255,255,255,0.05);
+                        padding: 16px;
+                        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+                        z-index: 99;
+                        animation: slideDown 0.2s ease-out;
+                    }
+
+                    .tb-mobile-nav {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 8px;
+                    }
+
+                    .tb-mobile-item {
+                        display: flex;
+                        align-items: center;
+                        gap: 12px;
+                        padding: 12px 16px;
+                        background: rgba(255,255,255,0.02);
+                        border: 1px solid rgba(255,255,255,0.05);
+                        border-radius: 8px;
+                        color: #a1a1aa;
+                        font-size: 14px;
+                        font-weight: 500;
+                        cursor: pointer;
+                    }
+                    .tb-mobile-item.active {
+                        background: rgba(255,255,255,0.05);
+                        color: #fafafa;
+                        border-color: rgba(255,255,255,0.1);
+                        font-weight: 600;
+                    }
+                }
+
+                @keyframes slideDown {
+                    from { opacity: 0; transform: translateY(-10px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+            `}</style>
+        </header>
     );
 }

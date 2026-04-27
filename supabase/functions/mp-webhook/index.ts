@@ -22,6 +22,8 @@ Deno.serve(async (req) => {
 
     let clientKey: string | null = null
     let deactivate = false
+    let diasLicencia = 30
+    let montoAbonado = 19999
 
     // ── Pago automático de suscripción ──────────────────────────────────────
     if (type === 'subscription_authorized_payment') {
@@ -43,6 +45,13 @@ Deno.serve(async (req) => {
       )
       const sub = await subRes.json()
       clientKey = sub.external_reference
+      
+      if (sub.auto_recurring?.transaction_amount == 89999) {
+        diasLicencia = 180
+        montoAbonado = 89999
+      } else if (sub.auto_recurring?.transaction_amount) {
+        montoAbonado = sub.auto_recurring.transaction_amount
+      }
 
     // ── Cambio de estado de suscripción (cancelación, pausa) ────────────────
     } else if (type === 'subscription_preapproval') {
@@ -56,6 +65,9 @@ Deno.serve(async (req) => {
 
       if (sub.status === 'cancelled' || sub.status === 'paused') {
         deactivate = true
+      } else {
+        // No es un pago ni una baja, no hacemos nada extra
+        return new Response('OK', { status: 200 })
       }
     }
 
@@ -89,23 +101,23 @@ Deno.serve(async (req) => {
       return new Response('OK', { status: 200 })
     }
 
-    // ── Crear nueva licencia (30 días) ───────────────────────────────────────
+    // ── Crear nueva licencia ───────────────────────────────────────
     await supabase.from('clientes').update({ activo: true }).eq('id', cliente.id)
 
     const hoy = new Date()
-    const vence = new Date(hoy.getTime() + 30 * 24 * 60 * 60 * 1000)
+    const vence = new Date(hoy.getTime() + diasLicencia * 24 * 60 * 60 * 1000)
 
     await supabase.from('licencias').insert({
       cliente_id: cliente.id,
       fecha_inicio: hoy.toISOString().slice(0, 10),
       fecha_vencimiento: vence.toISOString().slice(0, 10),
-      monto: 14999,
+      monto: montoAbonado,
       pagado: true,
       fecha_pago: hoy.toISOString(),
-      notas: `Pago automático MP — ${type} — ID: ${dataId}`,
+      notas: `Pago automático MP — ${type} — ID: ${dataId} — ${diasLicencia} días`,
     })
 
-    console.log(`Licencia creada para ${clientKey} hasta ${vence.toISOString().slice(0, 10)}`)
+    console.log(`Licencia creada para ${clientKey} hasta ${vence.toISOString().slice(0, 10)} (${diasLicencia} días)`)
     return new Response('OK', { status: 200 })
 
   } catch (err) {

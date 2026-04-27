@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store';
 import {
     ShoppingCart, CreditCard, Banknote, Smartphone, CheckCircle,
@@ -40,11 +40,16 @@ export default function PosPage() {
     const [variosOpen,       setVariosOpen]        = useState(false);
     const [variosInput,      setVariosInput]       = useState('');
     const [searchIndex,      setSearchIndex]       = useState(-1);
+    const [precioPesableOpen, setPrecioPesableOpen] = useState(false);
+    const [productoPesable, setProductoPesable] = useState(null);
+    const [precioPesable, setPrecioPesable] = useState('');
 
     const scannerRef   = useRef(null);
     const montoRef     = useRef(null);
     const descInputRef = useRef(null);
     const variosRef    = useRef(null);
+    const itemRefs     = useRef([]);
+    const precioPesableRef = useRef(null);
 
     const subtotal       = cart.reduce((s, i) => s + (Number(i.precio) || 0) * i.qty, 0);
     const descuentoMonto = descuento > 0 ? Math.round(subtotal * descuento / 100) : 0;
@@ -56,6 +61,13 @@ export default function PosPage() {
     useEffect(() => { if (activePage === 'pos') setTimeout(() => scannerRef.current?.focus(), 50); }, [activePage]);
     useEffect(() => { if (descuentoOpen) setTimeout(() => descInputRef.current?.focus(), 50); }, [descuentoOpen]);
     useEffect(() => { if (variosOpen) setTimeout(() => variosRef.current?.focus(), 50); }, [variosOpen]);
+    useEffect(() => { if (precioPesableOpen) setTimeout(() => precioPesableRef.current?.focus(), 50); }, [precioPesableOpen]);
+
+    useEffect(() => {
+        if (searchIndex >= 0 && itemRefs.current[searchIndex]) {
+            itemRefs.current[searchIndex].scrollIntoView({ block: 'nearest' });
+        }
+    }, [searchIndex]);
 
     useEffect(() => {
         if (activePage !== 'pos') return;
@@ -65,9 +77,13 @@ export default function PosPage() {
             const now = Date.now();
             if (now - lastTime > 50) keys = '';
             lastTime = now;
-            if (!payModalOpen && e.key.length === 1) keys += e.key;
-            if (!payModalOpen && e.key === 'Enter' && keys.length > 4 && /^\d+$/.test(keys)) {
+            if (!payModalOpen && !precioPesableOpen && e.key.length === 1) keys += e.key;
+            if (!payModalOpen && !precioPesableOpen && e.key === 'Enter' && keys.length > 4 && /^\d+$/.test(keys)) {
                 e.preventDefault(); addByBarcode(keys.trim()); keys = ''; return;
+            }
+            if (precioPesableOpen) {
+                if (e.key === 'Escape') { e.preventDefault(); closePrecioPesable(); return; }
+                return;
             }
             if (payModalOpen) {
                 if (e.key === 'Escape') { e.preventDefault(); setPayModalOpen(false); return; }
@@ -82,14 +98,14 @@ export default function PosPage() {
             if (e.key === 'F1') { e.preventDefault(); directPay('Efectivo'); }
             if (e.key === 'F2') { e.preventDefault(); openPayModal(); }
             if (e.key === 'Delete') { e.preventDefault(); removeLastCartItem(); }
-            if (e.key === '+') { e.preventDefault(); if (cart.length > 0) { const l = cart[cart.length-1]; const p = products.find(x => x.id === l.id); changeCartQty(l.id, 1, p ? p.stock : 999); } }
-            if (e.key === '-') { e.preventDefault(); if (cart.length > 0) { const l = cart[cart.length-1]; const p = products.find(x => x.id === l.id); changeCartQty(l.id, -1, p ? p.stock : 999); } }
+            if (e.key === '+') { e.preventDefault(); if (cart.length > 0) { const l = cart[cart.length-1]; const p = products.find(x => x.id === (l.productId ?? l.id)); changeCartQty(l.id, 1, p && !p.sinStock ? p.stock : 999); } }
+            if (e.key === '-') { e.preventDefault(); if (cart.length > 0) { const l = cart[cart.length-1]; const p = products.find(x => x.id === (l.productId ?? l.id)); changeCartQty(l.id, -1, p && !p.sinStock ? p.stock : 999); } }
             if (e.key === 'Escape') { e.preventDefault(); if (cart.length > 0 && window.confirm('¿Cancelar venta?')) cancelSale(); else { cancelSale(); scannerRef.current?.focus(); } }
             if (e.key === 'Enter' && document.activeElement !== scannerRef.current && cart.length > 0) { e.preventDefault(); openPayModal(); }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [activePage, cart, payModalOpen, successModalOpen, total, payMethod, montoRecibido, descuentoOpen, variosOpen]);
+    }, [activePage, cart, payModalOpen, precioPesableOpen, successModalOpen, total, payMethod, montoRecibido, descuentoOpen, variosOpen]);
 
     const openPayModal = () => {
         if (cart.length === 0) return;
@@ -109,10 +125,33 @@ export default function PosPage() {
           ).slice(0, 8)
         : [];
 
+    const closePrecioPesable = () => {
+        setPrecioPesableOpen(false);
+        setProductoPesable(null);
+        setPrecioPesable('');
+        setTimeout(() => scannerRef.current?.focus(), 50);
+    };
+    const openPrecioPesable = (p) => {
+        setProductoPesable(p);
+        setPrecioPesable(p.pv ? String(p.pv) : '');
+        setPrecioPesableOpen(true);
+    };
+    const confirmPrecioPesable = () => {
+        const precio = parseFloat(precioPesable);
+        if (!productoPesable || !(precio > 0)) {
+            showToastAction('!', 'Ingresá un precio válido', 'warn');
+            return;
+        }
+        addToCart(productoPesable, precio);
+        setFilterQuery('');
+        setSearchIndex(-1);
+        closePrecioPesable();
+    };
     const addProductToCart = (p) => {
-        if (p.stock <= 0) { showToastAction('!', `${p.nombre} sin stock`, 'error'); return; }
-        const ex = cart.find(i => i.id === p.id);
-        if (ex && ex.qty >= p.stock) { showToastAction('!', 'Stock insuficiente', 'warn'); return; }
+        if (!p.sinStock && p.stock <= 0) { showToastAction('!', `${p.nombre} sin stock`, 'error'); return; }
+        if (p.sinStock) { openPrecioPesable(p); return; }
+        const ex = cart.find(i => i.productId === p.id);
+        if (!p.sinStock && ex && ex.qty >= p.stock) { showToastAction('!', 'Stock insuficiente', 'warn'); return; }
         addToCart(p); setFilterQuery(''); setSearchIndex(-1);
     };
 
@@ -164,8 +203,8 @@ export default function PosPage() {
         setTimeout(() => {
             setSuccessModalOpen(false); scannerRef.current?.focus();
             const state = useStore.getState();
-            const out = state.products.filter(p => p.stock <= 0);
-            const low = state.products.filter(p => p.stock <= p.stockMin && p.stock > 0);
+            const out = state.products.filter(p => !p.sinStock && p.stock <= 0);
+            const low = state.products.filter(p => !p.sinStock && p.stock <= p.stockMin && p.stock > 0);
             if (out.length) showToastAction('!', out.map(p => p.nombre).join(', ') + ' sin stock', 'error');
             else if (low.length) showToastAction('!', low.map(p => p.nombre).join(', ') + ': stock bajo', 'warn');
         }, 2000);
@@ -263,20 +302,35 @@ export default function PosPage() {
                         )}
                         {filteredProducts.length > 0 && (
                             <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', marginTop: 4, overflow: 'hidden' }}>
-                                {filteredProducts.map((p, i) => (
-                                    <div key={p.id}
-                                        onMouseDown={e => { e.preventDefault(); addProductToCart(p); }}
-                                        onMouseEnter={() => setSearchIndex(i)}
-                                        style={{ display: 'flex', alignItems: 'center', padding: '8px 14px', cursor: 'pointer', gap: 10, background: i === searchIndex ? '#f0edff' : '#fff', borderBottom: i < filteredProducts.length - 1 ? '1px solid #f5f5f7' : 'none', transition: 'background 0.1s' }}
-                                    >
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                            <div style={{ fontSize: 13, fontWeight: 600, color: '#242834', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.nombre}</div>
-                                            {p.codigo && <div style={{ fontSize: 10, color: '#bbb' }}>{p.codigo}</div>}
+                                {filteredProducts.map((p, i) => {
+                                    const isSel = i === searchIndex;
+                                    return (
+                                        <div key={p.id}
+                                            ref={el => itemRefs.current[i] = el}
+                                            onMouseDown={e => { e.preventDefault(); addProductToCart(p); }}
+                                            onMouseEnter={() => setSearchIndex(i)}
+                                            style={{ 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                padding: '8px 14px', 
+                                                cursor: 'pointer', 
+                                                gap: 10, 
+                                                background: isSel ? '#111827' : '#fff', 
+                                                borderBottom: i < filteredProducts.length - 1 ? '1px solid #f5f5f7' : 'none', 
+                                                transition: 'background 0.1s' 
+                                            }}
+                                        >
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                <div style={{ fontSize: 13, fontWeight: 600, color: isSel ? '#fff' : '#242834', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.nombre}</div>
+                                                {p.codigo && <div style={{ fontSize: 10, color: isSel ? '#94a3b8' : '#bbb' }}>{p.codigo}</div>}
+                                            </div>
+                                            <div style={{ fontSize: 13, fontWeight: 700, color: isSel ? '#a3e635' : '#2D2D2A', flexShrink: 0 }}>
+                                                {p.sinStock ? 'Precio al pesar' : `$${Number(p.pv || 0).toLocaleString()}`}
+                                            </div>
+                                            {!p.sinStock && p.stock <= 3 && <div style={{ fontSize: 10, color: p.stock <= 0 ? '#ef4444' : '#f59e0b', flexShrink: 0 }}>stock {p.stock}</div>}
                                         </div>
-                                        <div style={{ fontSize: 13, fontWeight: 700, color: '#2D2D2A', flexShrink: 0 }}>${Number(p.precio).toLocaleString()}</div>
-                                        {p.stock <= 3 && <div style={{ fontSize: 10, color: p.stock <= 0 ? '#ef4444' : '#f59e0b', flexShrink: 0 }}>stock {p.stock}</div>}
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
@@ -292,81 +346,70 @@ export default function PosPage() {
                         </div>
                     ) : (
                         cart.map((item, idx) => {
-                            const p = products.find(x => x.id === item.id);
+                            const p = products.find(x => x.id === (item.productId ?? item.id));
                             return (
                                 <div key={item.id}
-                                    style={{ background: '#fff', border: '1.5px solid #edf0f5', borderRadius: 14, padding: '12px 14px', boxShadow: '0 1px 4px rgba(15,17,23,0.05)', transition: 'all 0.15s' }}
+                                    style={{ background: '#fff', border: '1.5px solid #edf0f5', borderRadius: 14, padding: '10px 14px', boxShadow: '0 1px 4px rgba(15,17,23,0.05)', transition: 'all 0.15s' }}
                                     onMouseEnter={e => { e.currentTarget.style.borderColor = '#d1d9e8'; e.currentTarget.style.boxShadow = '0 3px 12px rgba(15,17,23,0.09)'; }}
                                     onMouseLeave={e => { e.currentTarget.style.borderColor = '#edf0f5'; e.currentTarget.style.boxShadow = '0 1px 4px rgba(15,17,23,0.05)'; }}>
-
-                                    {/* Fila superior: número + nombre + código + eliminar */}
-                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
-                                        <span style={{ fontSize: 11, color: '#d1d5db', fontWeight: 700, marginTop: 3, flexShrink: 0, minWidth: 16 }}>{idx + 1}</span>
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                            <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 16, width: '100%' }}>
+                                        {/* 1. Index */}
+                                        <span style={{ fontSize: 11, color: '#d1d5db', fontWeight: 700, flexShrink: 0, minWidth: 20 }}>{idx + 1}</span>
+                                        
+                                        {/* 2. Info: Nombre y Código */}
+                                        <div style={{ flex: 2, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                                            <div style={{ fontSize: 14, fontWeight: 700, color: '#111827', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                 {item.nombre}
                                             </div>
                                             {p?.codigo && (
-                                                <div style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
-                                                    <Hash size={10} /> {p.codigo}
+                                                <div style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', marginTop: 1, display: 'flex', alignItems: 'center', gap: 3 }}>
+                                                    <Hash size={9} /> {p.codigo}
                                                 </div>
                                             )}
                                         </div>
-                                        <button onClick={() => removeFromCart(item.id)}
-                                            style={{ flexShrink: 0, width: 28, height: 28, borderRadius: 8, border: 'none', background: '#f3f4f6', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#c4c8d2', transition: 'all 0.15s' }}
-                                            onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = '#fee2e2'; }}
-                                            onMouseLeave={e => { e.currentTarget.style.color = '#c4c8d2'; e.currentTarget.style.background = '#f3f4f6'; }}>
-                                            <X size={13} />
-                                        </button>
-                                    </div>
 
-                                    {/* Fila inferior: precio + cantidad + subtotal */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-
-                                        {/* Label precio */}
-                                        <span style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px', flexShrink: 0 }}>Precio</span>
-
-                                        {/* Input precio */}
-                                        <div style={{ position: 'relative', width: 110, flexShrink: 0 }}>
-                                            <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#9ca3af', fontWeight: 700, pointerEvents: 'none' }}>$</span>
-                                            <input
-                                                type="number"
-                                                value={item.precio}
-                                                onChange={e => changeCartItemPrice(item.id, parseFloat(e.target.value) || 0)}
-                                                onWheel={e => e.currentTarget.blur()}
-                                                style={{ width: '100%', paddingLeft: 20, paddingRight: 8, height: 36, border: '1.5px solid #e5e7eb', borderRadius: 9, background: '#f8fafc', color: '#111827', fontSize: 16, fontWeight: 800, textAlign: 'right', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', MozAppearance: 'textfield', transition: 'all 0.15s', fontVariantNumeric: 'tabular-nums' }}
-                                                onFocus={e => { e.target.style.borderColor = '#3b82f6'; e.target.style.background = '#fff'; e.target.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.12)'; }}
-                                                onBlur={e => { e.target.style.borderColor = '#e5e7eb'; e.target.style.background = '#f8fafc'; e.target.style.boxShadow = 'none'; }}
-                                            />
+                                        {/* 3. Precio Unitario */}
+                                        <div style={{ flex: 1, minWidth: 100, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                            <span style={{ fontSize: 9, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Precio</span>
+                                            <div style={{ position: 'relative' }}>
+                                                <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: '#9ca3af', fontWeight: 700, pointerEvents: 'none' }}>$</span>
+                                                <input
+                                                    type="number"
+                                                    value={item.precio}
+                                                    onChange={e => changeCartItemPrice(item.id, parseFloat(e.target.value) || 0)}
+                                                    onWheel={e => e.currentTarget.blur()}
+                                                    style={{ width: '100%', paddingLeft: 18, paddingRight: 6, height: 32, border: '1.5px solid #e5e7eb', borderRadius: 8, background: '#f8fafc', color: '#111827', fontSize: 14, fontWeight: 800, textAlign: 'right', outline: 'none', fontFamily: 'inherit', transition: 'all 0.15s' }}
+                                                    onFocus={e => { e.target.style.borderColor = '#3b82f6'; e.target.style.background = '#fff'; }}
+                                                    onBlur={e => { e.target.style.borderColor = '#e5e7eb'; e.target.style.background = '#f8fafc'; }}
+                                                />
+                                            </div>
                                         </div>
 
-                                        {/* Cantidad */}
-                                        <div style={{ display: 'flex', alignItems: 'center', background: '#f3f4f6', borderRadius: 10, border: '1.5px solid #e5e7eb', overflow: 'hidden', flexShrink: 0 }}>
-                                            <button
-                                                onClick={() => changeCartQty(item.id, -1, p ? p.stock : 999)}
-                                                style={{ width: 34, height: 34, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7280', transition: 'background 0.1s' }}
-                                                onMouseEnter={e => e.currentTarget.style.background = '#e5e7eb'}
-                                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                                                <Minus size={14} />
-                                            </button>
-                                            <span style={{ minWidth: 36, textAlign: 'center', fontSize: 17, fontWeight: 800, color: '#111827', fontVariantNumeric: 'tabular-nums' }}>{item.qty}</span>
-                                            <button
-                                                onClick={() => changeCartQty(item.id, 1, p ? p.stock : 999)}
-                                                disabled={item.qty >= (p ? p.stock : 999)}
-                                                style={{ width: 34, height: 34, border: 'none', background: 'transparent', cursor: item.qty >= (p ? p.stock : 999) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: item.qty >= (p ? p.stock : 999) ? '#d1d5db' : '#6b7280', transition: 'background 0.1s' }}
-                                                onMouseEnter={e => { if (item.qty < (p ? p.stock : 999)) e.currentTarget.style.background = '#e5e7eb'; }}
-                                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                                                <Plus size={14} />
-                                            </button>
+                                        {/* 4. Cantidad */}
+                                        <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center' }}>
+                                            <span style={{ fontSize: 9, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Cant</span>
+                                            <div style={{ display: 'flex', alignItems: 'center', background: '#f3f4f6', borderRadius: 8, border: '1.5px solid #e5e7eb', overflow: 'hidden', height: 32 }}>
+                                                <button onClick={() => changeCartQty(item.id, -1, p && !p.sinStock ? p.stock : 999)} style={{ width: 28, height: '100%', border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7280' }}><Minus size={12} /></button>
+                                                <span style={{ minWidth: 30, textAlign: 'center', fontSize: 15, fontWeight: 800, color: '#111827' }}>{item.qty}</span>
+                                                <button onClick={() => changeCartQty(item.id, 1, p && !p.sinStock ? p.stock : 999)} disabled={item.qty >= (p && !p.sinStock ? p.stock : 999)} style={{ width: 28, height: '100%', border: 'none', background: 'transparent', cursor: item.qty >= (p && !p.sinStock ? p.stock : 999) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: item.qty >= (p && !p.sinStock ? p.stock : 999) ? '#d1d5db' : '#6b7280' }}><Plus size={12} /></button>
+                                            </div>
                                         </div>
 
-                                        {/* Subtotal */}
-                                        <div style={{ flex: 1, textAlign: 'right' }}>
-                                            <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 1 }}>Total</div>
-                                            <div style={{ fontSize: 19, fontWeight: 900, color: '#111827', letterSpacing: '-0.5px', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+                                        {/* 5. Total */}
+                                        <div style={{ flex: 1, minWidth: 90, textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                            <span style={{ fontSize: 9, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total</span>
+                                            <div style={{ fontSize: 16, fontWeight: 900, color: '#111827', letterSpacing: '-0.5px' }}>
                                                 ${(Number(item.precio) * item.qty).toLocaleString()}
                                             </div>
                                         </div>
+
+                                        {/* 6. Eliminar */}
+                                        <button onClick={() => removeFromCart(item.id)}
+                                            style={{ flexShrink: 0, width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fef2f2', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444', transition: 'all 0.15s' }}
+                                            onMouseEnter={e => { e.currentTarget.style.background = '#fee2e2'; }}
+                                            onMouseLeave={e => { e.currentTarget.style.background = '#fef2f2'; }}>
+                                            <Trash2 size={14} />
+                                        </button>
                                     </div>
                                 </div>
                             );
@@ -527,6 +570,45 @@ export default function PosPage() {
             </div>
 
             {/* ”€”€ MODAL é‰XITO ”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€”€ */}
+            <div className={`modal-overlay ${precioPesableOpen ? 'open' : ''}`}>
+                <div className="modal" style={{ width: 'min(360px, 96vw)' }}>
+                    <div className="modal-title"><Tag size={20} /> Precio del producto</div>
+                    <div style={{ fontSize: 14, color: 'var(--text2)', marginBottom: 14 }}>
+                        {productoPesable?.nombre || 'Producto pesable'}
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 16 }}>
+                        <label className="form-label">Precio a cobrar</label>
+                        <input
+                            ref={precioPesableRef}
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="form-control"
+                            value={precioPesable}
+                            onChange={e => setPrecioPesable(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    confirmPrecioPesable();
+                                }
+                                if (e.key === 'Escape') {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    closePrecioPesable();
+                                }
+                            }}
+                            placeholder="0"
+                            style={{ fontSize: 22, fontWeight: 700, textAlign: 'right' }}
+                        />
+                    </div>
+                    <div className="modal-actions">
+                        <button className="btn-modal-cancel" onClick={closePrecioPesable}>Cancelar</button>
+                        <button className="btn-modal-confirm" onClick={confirmPrecioPesable}>Agregar al carrito</button>
+                    </div>
+                </div>
+            </div>
+
             <div className={`modal-overlay ${successModalOpen ? 'open' : ''}`}>
                 <div className="modal" style={{ width: 'min(360px, 96vw)', textAlign: 'center', position: 'relative' }}>
                     <button onClick={() => setSuccessModalOpen(false)} style={{ position: 'absolute', top: 14, right: 14, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', lineHeight: 0 }}>

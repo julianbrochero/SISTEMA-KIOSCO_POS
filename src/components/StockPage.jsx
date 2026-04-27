@@ -1,6 +1,6 @@
-﻿import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useStore } from '../store';
-import { Package, Trash2, PlusCircle, Check, X } from 'lucide-react';
+import { Package, Trash2, PlusCircle, Check, X, Search, Download, TrendingUp, AlertTriangle, Box, Plus, Minus, Edit2, Info, FileSpreadsheet, List, Layers, FileBox } from 'lucide-react';
 import { fmt } from '../utils';
 
 export default function StockPage() {
@@ -12,19 +12,23 @@ export default function StockPage() {
     const registrarMovimiento = useStore(s => s.registrarMovimiento);
     const showToastAction = useStore(s => s.showToastAction);
 
+    // ── NEW STATES FOR DESIGN ──
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filterStatus, setFilterStatus] = useState('todos'); // todos | bajo | sin | con
+    const [showAdjust, setShowAdjust] = useState(false);
+
+    // ── ORIGINAL STATES FOR INGRESO FLOW ──
     const [scanValue,      setScanValue]      = useState('');
     const [pending,        setPending]        = useState(null);
     const [ingresoItems,   setIngresoItems]   = useState([]);
     const [confirmStep,    setConfirmStep]    = useState(false); // false | 'ask' | 'egreso'
     const [egresoImporte,  setEgresoImporte]  = useState('');
-    const [mobileTab,      setMobileTab]      = useState('ingreso');
 
     const totalCosto = ingresoItems.reduce(
         (a, i) => a + (parseFloat(i.pc) || 0) * (parseInt(i.qty) || 0), 0
     );
 
     const guardarSinCosto = () => ejecutarGuardado(0);
-
     const guardarConCostoItems = () => {
         if (totalCosto <= 0) {
             showToastAction('⚠️', 'No hay costos cargados por producto', 'warn');
@@ -33,25 +37,39 @@ export default function StockPage() {
         ejecutarGuardado(totalCosto);
     };
 
-    // Keyboard confirm step
+    // Keyboard confirm step for Ingreso
     useEffect(() => {
-        if (!confirmStep) return;
+        if (!showAdjust) return;
         const handler = (e) => {
             if (confirmStep === 'ask') {
+                if (e.key === 'Enter')              { e.preventDefault(); if (totalCosto > 0) guardarConCostoItems(); else guardarSinCosto(); }
                 if (e.key === 'c' || e.key === 'C') { e.preventDefault(); guardarConCostoItems(); }
                 if (e.key === 't' || e.key === 'T') { e.preventDefault(); setConfirmStep('egreso'); }
                 if (e.key === 'n' || e.key === 'N') { e.preventDefault(); guardarSinCosto(); }
                 if (e.key === 'Escape')             { e.preventDefault(); setConfirmStep(false); setTimeout(() => scannerRef.current?.focus(), 50); }
-            }
-            if (confirmStep === 'egreso' && e.key === 'Escape') {
-                e.preventDefault();
-                setConfirmStep('ask');
+            } else if (confirmStep === 'egreso') {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setConfirmStep('ask');
+                }
+            } else if (pending) {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setPending(null);
+                    setTimeout(() => scannerRef.current?.focus(), 80);
+                }
+            } else if (!confirmStep && !pending) {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setShowAdjust(false);
+                }
             }
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [confirmStep, ingresoItems]);
+    }, [confirmStep, ingresoItems, showAdjust, pending, totalCosto]);
 
+    const searchRef   = useRef(null);
     const scannerRef  = useRef(null);
     const qtyRef      = useRef(null);
     const pvPendRef   = useRef(null);
@@ -62,37 +80,48 @@ export default function StockPage() {
         if (confirmStep === 'egreso') setTimeout(() => egresoRef.current?.focus(), 50);
     }, [confirmStep]);
 
-    // Focus automático al entrar a la página
     useEffect(() => {
-        if (activePage === 'stock') {
+        if (showAdjust) {
             setTimeout(() => scannerRef.current?.focus(), 150);
+        } else {
+            setTimeout(() => searchRef.current?.focus(), 150);
         }
-    }, [activePage]);
+    }, [showAdjust]);
+
+    useEffect(() => {
+        if (activePage === 'stock' && !showAdjust) {
+            setTimeout(() => searchRef.current?.focus(), 150);
+        }
+    }, [activePage, showAdjust]);
 
     if (activePage !== 'stock') return null;
 
-    const lowProds  = products.filter(p => p.stock <= p.stockMin);
-
-    // ── Lógica de escaneo / búsqueda ──────────────────────────────────────
+    // ── ORIGINAL SCAN LOGIC ──
     const handleScan = (e) => {
         if (e.key !== 'Enter') return;
         e.preventDefault();
         const val = scanValue.trim();
-        // Enter vacío con ítems → iniciar flujo de guardado
-        if (!val && ingresoItems.length > 0 && !pending) { setConfirmStep('ask'); return; }
+        const lowerVal = val.toLowerCase();
+
+        if (ingresoItems.length > 0 && !pending) {
+            if (lowerVal === 'm') { setScanValue(''); setConfirmStep('egreso'); return; }
+            if (lowerVal === 'n') { setScanValue(''); guardarSinCosto(); return; }
+            if (!val) {
+                if (totalCosto > 0) guardarConCostoItems();
+                else guardarSinCosto();
+                return;
+            }
+        }
         if (!val) return;
 
-        // Busca por código exacto primero, después por nombre
         const found = products.find(x => x.codigo === val)
             || products.find(x => x.nombre.toLowerCase().includes(val.toLowerCase()));
 
         if (found) {
             setPending({ product: found, qty: '', pv: String(found.pv), pc: String(found.pc) });
             setScanValue('');
-            // Focus en qty tras render
             setTimeout(() => qtyRef.current?.focus(), 80);
         } else {
-            // Producto nuevo
             setIngresoItems(prev => [...prev, {
                 uid: Date.now() + Math.random(),
                 id: null, isNew: true,
@@ -103,7 +132,6 @@ export default function StockPage() {
         }
     };
 
-    // ── Confirmar producto pendiente ───────────────────────────────────────
     const confirmPending = () => {
         if (!pending) return;
         const qty = Math.max(1, parseInt(pending.qty) || 1);
@@ -139,11 +167,8 @@ export default function StockPage() {
         setTimeout(() => scannerRef.current?.focus(), 80);
     };
 
-    const updateItem = (uid, field, value) =>
-        setIngresoItems(prev => prev.map(i => i.uid === uid ? { ...i, [field]: value } : i));
-
-    const removeItem = (uid) =>
-        setIngresoItems(prev => prev.filter(i => i.uid !== uid));
+    const updateItem = (uid, field, value) => setIngresoItems(prev => prev.map(i => i.uid === uid ? { ...i, [field]: value } : i));
+    const removeItem = (uid) => setIngresoItems(prev => prev.filter(i => i.uid !== uid));
 
     const ejecutarGuardado = (importeEgreso) => {
         for (const i of ingresoItems) {
@@ -173,320 +198,450 @@ export default function StockPage() {
         setIngresoItems([]);
         setConfirmStep(false);
         setEgresoImporte('');
-        setTimeout(() => scannerRef.current?.focus(), 100);
+        setShowAdjust(false);
     };
 
-    const guardarIngreso = () => { setConfirmStep('ask'); };
+    const guardarIngreso = () => { 
+        if (totalCosto > 0) guardarConCostoItems();
+        else guardarSinCosto(); 
+    };
 
-    // ─────────────────────────────────────────────────────────────────────
+    // ── NEW UI LOGIC ──
+    const filterAndSearch = () => {
+        let list = products;
+        if (filterStatus === 'bajo') list = list.filter(p => !p.sinStock && p.stock <= p.stockMin && p.stock > 0);
+        else if (filterStatus === 'sin') list = list.filter(p => !p.sinStock && p.stock <= 0);
+        else if (filterStatus === 'con') list = list.filter(p => p.stock > 0 && !p.sinStock);
+        
+        if (searchTerm) {
+            const q = searchTerm.toLowerCase();
+            list = list.filter(p => p.nombre.toLowerCase().includes(q) || (p.codigo && p.codigo.includes(q)) || (p.cat && p.cat.toLowerCase().includes(q)));
+        }
+        return list;
+    };
+    
+    const filteredProducts = filterAndSearch();
+
+    const lowProds = products.filter(p => !p.sinStock && p.stock <= p.stockMin && p.stock > 0);
+    const outProds = products.filter(p => !p.sinStock && p.stock <= 0);
+    const allStockValue = products.reduce((acc, p) => acc + (parseFloat(p.pc) * Math.max(0, p.stock) || 0), 0);
+
+    const exportCSV = () => {
+        const headers = ["Codigo", "Nombre", "Categoria", "Precio Venta", "Costo", "Stock Actual", "Stock Minimo"];
+        const rows = products.map(p => [(p.codigo || '').replace(/,/g, ''), (p.nombre || '').replace(/,/g, ''), (p.cat || '').replace(/,/g, ''), p.pv || 0, p.pc || 0, p.stock || 0, p.stockMin || 0]);
+        const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `inventario_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToastAction('✓', 'Archivo CSV exportado', 'success');
+    };
+
+    const quickAdjust = (p, qty) => {
+        addStock([{ id: p.id, nombre: p.nombre, qty }]);
+        showToastAction('✓', `Stock actualizado: ${p.nombre} (${qty > 0 ? '+' : ''}${qty})`, 'success');
+    };
+
+    // Styles Variables to match SaaS Prompt
+    const BG = '#F8FAFC';
+    const WHITE = '#FFFFFF';
+    const BORDER = '#E2E8F0';
+    const TEXT1 = '#0F172A';
+    const TEXT2 = '#475569';
+    const TEXT3 = '#64748B';
+    const ACCENT = '#0F172A'; // Black/Slate
+    const RED = '#EF4444';
+    const GREEN = '#10B981';
+    const YELLOW = '#F59E0B';
+
     return (
-        <div className="page active" id="page-stock">
+        <div className="page active" id="page-new-stock" style={{ background: BG, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+            
+            {/* TOOLBAR */}
+            <div style={{ padding: '0 32px', background: WHITE, borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, height: 68, position: 'relative', zIndex: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', paddingRight: 24, borderRight: `1px solid ${BORDER}` }}>
+                        <span style={{ fontSize: 20, fontWeight: 800, color: TEXT1, letterSpacing: '-0.02em', lineHeight: 1.2 }}>Control de Stock</span>
+                        <span style={{ fontSize: 13, color: TEXT3, fontWeight: 500 }}>Gestión de inventario</span>
+                    </div>
+                    {/* Search Component */}
+                    <div style={{ position: 'relative', width: 320 }}>
+                        <Search size={16} color={TEXT3} style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)' }} />
+                        <input type="text" ref={searchRef} placeholder="Escanear producto o buscar..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    const val = searchTerm.trim();
+                                    if (!val) return;
+                                    const found = products.find(x => x.codigo === val)
+                                        || products.find(x => x.nombre.toLowerCase().includes(val.toLowerCase()));
+                                    
+                                    setShowAdjust(true);
+                                    if (found) {
+                                        setPending({ product: found, qty: '', pv: String(found.pv), pc: String(found.pc) });
+                                        setTimeout(() => qtyRef.current?.focus(), 250);
+                                    } else {
+                                        setIngresoItems(prev => [...prev, {
+                                            uid: Date.now() + Math.random(),
+                                            id: null, isNew: true,
+                                            codigo: val, nombre: '', pv: '', pc: '', qty: '', stockActual: 0,
+                                        }]);
+                                        showToastAction('ℹ️', 'Producto nuevo – completá nombre y precios', 'info');
+                                    }
+                                    setSearchTerm('');
+                                    setScanValue('');
+                                }
+                            }}
+                            style={{ width: '100%', height: 40, padding: '0 16px 0 42px', borderRadius: 8, border: `1px solid ${BORDER}`, background: '#F1F5F9', fontSize: 13, color: TEXT1, outline: 'none', transition: 'all 0.2s', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)' }}
+                            onFocus={e => { e.target.style.background = WHITE; e.target.style.borderColor = ACCENT; e.target.style.boxShadow = '0 0 0 3px #E2E8F0'; }}
+                            onBlur={e => { e.target.style.background = '#F1F5F9'; e.target.style.borderColor = BORDER; e.target.style.boxShadow = 'inset 0 1px 2px rgba(0,0,0,0.02)'; }}
+                        />
+                    </div>
+                </div>
 
-            {/* Toolbar */}
-            <div className="page-toolbar">
-                <span className="page-title">Control de Stock</span>
-                <div className="stock-mobile-tabs">
-                    <button
-                        className={`stock-mobile-tab ${mobileTab === 'ingreso' ? 'active' : ''}`}
-                        onClick={() => setMobileTab('ingreso')}
-                    >
-                        Ingreso {ingresoItems.length > 0 && <span className="stock-tab-badge">{ingresoItems.length}</span>}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <button onClick={exportCSV} style={{ padding: '0 16px', height: 40, borderRadius: 8, border: `1px solid ${BORDER}`, background: WHITE, color: TEXT2, fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}
+                        onMouseEnter={e => e.target.style.background = '#F8FAFC'} onMouseLeave={e => e.target.style.background = WHITE}>
+                        <Download size={16} /> Exportar CSV
                     </button>
-                    <button
-                        className={`stock-mobile-tab ${mobileTab === 'alertas' ? 'active' : ''}`}
-                        onClick={() => setMobileTab('alertas')}
-                    >
-                        Alertas {lowProds.length > 0 && <span className="stock-tab-badge stock-tab-badge-warn">{lowProds.length}</span>}
+                    <button onClick={() => setShowAdjust(true)} style={{ padding: '0 16px', height: 40, borderRadius: 8, border: `1px solid ${BORDER}`, background: WHITE, color: TEXT1, fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}
+                        onMouseEnter={e => e.target.style.background = '#F8FAFC'} onMouseLeave={e => e.target.style.background = WHITE}>
+                        <Box size={16} /> Ajustar stock
+                    </button>
+                    <button onClick={() => { setShowAdjust(true); setTimeout(() => { setScanValue(''); }, 200); }} style={{ padding: '0 20px', height: 40, borderRadius: 8, border: 'none', background: ACCENT, color: WHITE, fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                        onMouseEnter={e => e.target.style.filter = 'brightness(1.2)'} onMouseLeave={e => e.target.style.filter = 'none'}>
+                        <PlusCircle size={16} /> Nuevo producto
                     </button>
                 </div>
             </div>
 
-            <div className="stock-panels">
-
-                {/* ══ PANEL IZQUIERDO – Alertas ══════════════════════════════ */}
-                <div className={`stock-panel-wrap stock-panel-alertas ${mobileTab !== 'alertas' ? 'stock-panel-mobile-hidden' : ''}`}>
-                    <div className="stock-left">
-                        <div className="section-header">
-                            Alertas de Stock
-                            {lowProds.length > 0 && <div className="alert-count">{lowProds.length}</div>}
+            {/* MAIN CONTENT */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+                
+                {/* KPIs */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+                    <div style={{ background: WHITE, borderRadius: 16, padding: '20px', border: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+                        <div style={{ width: 48, height: 48, borderRadius: 12, background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Layers size={22} color={TEXT2} />
                         </div>
-                        <div className="alerts-list">
-                            {lowProds.length === 0
-                                ? <div className="stock-empty">✅ Sin alertas de stock</div>
-                                : lowProds.map(p => {
-                                    const isOut = p.stock <= 0;
-                                    return (
-                                        <div className={`alert-card ${isOut ? 'alert-out' : 'alert-low'}`} key={p.id}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                                                <div className="alert-title">
-                                                    <Package size={14} style={{ flexShrink: 0 }} />
-                                                    {p.nombre}
-                                                </div>
-                                                <span className={`alert-badge ${isOut ? 'badge-danger' : 'badge-warn'}`}>
-                                                    {isOut ? 'SIN STOCK' : 'BAJO'}
-                                                </span>
-                                            </div>
-                                            <div className="alert-meta">
-                                                Stock: <b>{p.stock}</b> u · Mín: {p.stockMin} u · {p.proveedor}
-                                            </div>
-                                        </div>
-                                    );
-                            })}
+                        <div>
+                            <div style={{ fontSize: 26, fontWeight: 800, color: TEXT1, lineHeight: 1 }}>{products.length}</div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: TEXT3, marginTop: 4 }}>Total de Productos</div>
+                        </div>
+                    </div>
+                    <div style={{ background: WHITE, borderRadius: 16, padding: '20px', border: `1px solid ${outProds.length > 0 ? '#FECACA' : BORDER}`, display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.03)', position: 'relative', overflow: 'hidden' }}>
+                        {outProds.length > 0 && <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: RED }}></div>}
+                        <div style={{ width: 48, height: 48, borderRadius: 12, background: outProds.length > 0 ? '#FEF2F2' : '#F1F5F9', border: outProds.length > 0 ? '1px solid #FECACA' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <AlertTriangle size={22} color={outProds.length > 0 ? RED : TEXT2} />
+                        </div>
+                        <div>
+                            <div style={{ fontSize: 26, fontWeight: 800, color: outProds.length > 0 ? '#991B1B' : TEXT1, lineHeight: 1 }}>{outProds.length}</div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: outProds.length > 0 ? RED : TEXT3, marginTop: 4 }}>Productos sin Stock</div>
+                        </div>
+                    </div>
+                    <div style={{ background: WHITE, borderRadius: 16, padding: '20px', border: `1px solid ${lowProds.length > 0 ? '#FDE68A' : BORDER}`, display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.03)', position: 'relative', overflow: 'hidden' }}>
+                        {lowProds.length > 0 && <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: YELLOW }}></div>}
+                        <div style={{ width: 48, height: 48, borderRadius: 12, background: lowProds.length > 0 ? '#FFFBEB' : '#F1F5F9', border: lowProds.length > 0 ? '1px solid #FDE68A' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <AlertTriangle size={22} color={lowProds.length > 0 ? '#D97706' : TEXT2} />
+                        </div>
+                        <div>
+                            <div style={{ fontSize: 26, fontWeight: 800, color: lowProds.length > 0 ? '#92400E' : TEXT1, lineHeight: 1 }}>{lowProds.length}</div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: lowProds.length > 0 ? '#D97706' : TEXT3, marginTop: 4 }}>Bajo Stock</div>
+                        </div>
+                    </div>
+                    <div style={{ background: WHITE, borderRadius: 16, padding: '20px', border: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+                        <div style={{ width: 48, height: 48, borderRadius: 12, background: '#ECFDF5', border: '1px solid #A7F3D0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <TrendingUp size={22} color={GREEN} />
+                        </div>
+                        <div>
+                            <div style={{ fontSize: 26, fontWeight: 800, color: '#065F46', lineHeight: 1 }}>{fmt(allStockValue)}</div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: GREEN, marginTop: 4 }}>Costo Total Inventario</div>
                         </div>
                     </div>
                 </div>
 
-                {/* ══ PANEL DERECHO – Ingreso ════════════════════════════════ */}
-                <div className={`stock-panel-wrap stock-panel-ingreso ${mobileTab !== 'ingreso' ? 'stock-panel-mobile-hidden' : ''}`}>
-                    <div className="stock-right">
-                        <div className="section-header">⬆ Ingreso de Mercadería</div>
+                {/* TABLE CONTAINER */}
+                <div style={{ background: WHITE, borderRadius: 16, border: `1px solid ${BORDER}`, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 400, overflow: 'hidden' }}>
+                    
+                    {/* Filters Row */}
+                    <div style={{ padding: '16px 24px', borderBottom: `1px solid #F1F5F9`, display: 'flex', alignItems: 'center', gap: 12, background: '#FAFAFA' }}>
+                        {[
+                            { key: 'todos', label: 'Todos los productos' },
+                            { key: 'bajo', label: 'Bajo stock (Crítico)', count: lowProds.length, color: '#D97706', bg: '#FFFBEB' },
+                            { key: 'sin', label: 'Sin stock', count: outProds.length, color: RED, bg: '#FEF2F2' },
+                            { key: 'con', label: 'Con stock' },
+                        ].map(f => {
+                            const isActive = filterStatus === f.key;
+                            return (
+                                <button key={f.key} onClick={() => setFilterStatus(f.key)}
+                                    style={{ padding: '6px 16px', borderRadius: 20, border: `1px solid ${isActive ? '#CBD5E1' : 'transparent'}`, background: isActive ? WHITE : 'transparent', color: isActive ? TEXT1 : TEXT3, fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', boxShadow: isActive ? '0 1px 2px rgba(0,0,0,0.05)' : 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    {f.label}
+                                    {f.count > 0 && (
+                                        <span style={{ background: f.bg, color: f.color, padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700 }}>{f.count}</span>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
 
-                        {/* Scanner */}
-                        <div className="stock-scanner-wrap">
-                            <input
-                                ref={scannerRef}
-                                type="text"
-                                className="stock-scanner-input"
-                                placeholder="📷  Escanear código o escribir nombre del producto..."
-                                value={scanValue}
-                                onChange={e => setScanValue(e.target.value)}
-                                onKeyDown={handleScan}
-                                autoComplete="off"
-                            />
+                    <div style={{ flex: 1, overflowY: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                            <thead style={{ position: 'sticky', top: 0, zIndex: 5 }}>
+                                <tr style={{ background: '#FAFAFA', borderBottom: `1px solid ${BORDER}` }}>
+                                    <th style={{ padding: '14px 24px', fontSize: 12, fontWeight: 700, color: TEXT3, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Producto</th>
+                                    <th style={{ padding: '14px 16px', fontSize: 12, fontWeight: 700, color: TEXT3, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Categoría</th>
+                                    <th style={{ padding: '14px 16px', fontSize: 12, fontWeight: 700, color: TEXT3, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Precio</th>
+                                    <th style={{ padding: '14px 16px', fontSize: 12, fontWeight: 700, color: TEXT3, textTransform: 'uppercase', letterSpacing: '0.05em', minWidth: 200 }}>Nivel de Stock</th>
+                                    <th style={{ padding: '14px 16px', fontSize: 12, fontWeight: 700, color: TEXT3, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Estado</th>
+                                    <th style={{ padding: '14px 24px', fontSize: 12, fontWeight: 700, color: TEXT3, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredProducts.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={6} style={{ padding: '80px 20px', textAlign: 'center' }}>
+                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, color: TEXT3 }}>
+                                                <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                    <Package size={28} color="#CBD5E1" />
+                                                </div>
+                                                <span style={{ fontSize: 16, fontWeight: 600, color: TEXT1 }}>No hay productos para mostrar</span>
+                                                <span style={{ fontSize: 14 }}>Prueba ajustando los filtros o <span onClick={() => {setShowAdjust(true); setScanValue('');}} style={{ color: '#2563EB', cursor: 'pointer', textDecoration: 'underline' }}>crea un nuevo producto</span>.</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ) : filteredProducts.map((p, idx) => {
+                                    const isOut = !p.sinStock && p.stock <= 0;
+                                    const isLow = !isOut && p.stock <= p.stockMin;
+                                    
+                                    const stateColor = isOut ? RED : isLow ? YELLOW : GREEN;
+                                    const stateBg = isOut ? '#FEF2F2' : isLow ? '#FFFBEB' : '#ECFDF5';
+                                    const stateText = isOut ? '#991B1B' : isLow ? '#92400E' : '#065F46';
+                                    const stateLabel = isOut ? 'Crítico' : isLow ? 'Bajo' : 'Óptimo';
+                                    const rowBg = isOut ? 'rgba(239, 68, 68, 0.03)' : isLow ? 'rgba(245, 158, 11, 0.03)' : 'transparent';
+                                    
+                                    const percent = isOut ? 0 : Math.min(100, (p.stock / Math.max(1, p.stockMin * 2)) * 100);
+
+                                    return (
+                                        <tr key={p.id} style={{ borderBottom: idx < filteredProducts.length - 1 ? `1px solid #F1F5F9` : 'none', background: rowBg, transition: 'background 0.2s', position: 'relative' }}>
+                                            <td style={{ padding: '16px 24px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                                    <div style={{ width: 36, height: 36, borderRadius: 8, background: WHITE, border: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                        <Package size={16} color={TEXT3} />
+                                                    </div>
+                                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                        <span style={{ fontSize: 14, fontWeight: 600, color: TEXT1 }}>{p.nombre}</span>
+                                                        <span style={{ fontSize: 11, color: TEXT3, fontFamily: 'monospace' }}>{p.codigo || '-'}</span>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: '16px 16px', fontSize: 13, color: TEXT2, fontWeight: 500 }}>
+                                                {p.cat || 'General'}
+                                            </td>
+                                            <td style={{ padding: '16px 16px' }}>
+                                                <div style={{ fontSize: 14, fontWeight: 700, color: TEXT1 }}>{fmt(p.pv)}</div>
+                                            </td>
+                                            <td style={{ padding: '16px 16px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                                    <span style={{ fontSize: 14, fontWeight: 800, color: stateColor, width: 36 }}>{p.stock}</span>
+                                                    <div style={{ flex: 1, maxWidth: 120, height: 6, borderRadius: 4, background: '#E2E8F0', overflow: 'hidden' }}>
+                                                        <div style={{ width: `${percent}%`, height: '100%', background: stateColor, borderRadius: 4, transition: 'width 0.5s ease' }}></div>
+                                                    </div>
+                                                    <span style={{ fontSize: 11, color: TEXT3 }}>Mín: {p.stockMin}</span>
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: '16px 16px' }}>
+                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: stateBg, color: stateText }}>
+                                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: stateColor }}></span>
+                                                    {stateLabel}
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '16px 24px', textAlign: 'right' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                                                    {/* Inline Actions */}
+                                                    <button onClick={() => quickAdjust(p, -1)} title="Restar 1" style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${BORDER}`, background: WHITE, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: TEXT2, transition: 'all 0.15s' }} onMouseEnter={e => {e.target.style.background = '#F1F5F9'; e.target.style.color = TEXT1}}>
+                                                        <Minus size={14} />
+                                                    </button>
+                                                    <button onClick={() => quickAdjust(p, 1)} title="Sumar 1" style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${BORDER}`, background: WHITE, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: TEXT2, transition: 'all 0.15s' }} onMouseEnter={e => {e.target.style.background = '#F1F5F9'; e.target.style.color = TEXT1}}>
+                                                        <Plus size={14} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            {/* ── ADJUST/INGRESS DRAWER (The original Flow with SaaS UI) ── */}
+            {showAdjust && (
+                <>
+                    <div onClick={() => !confirmStep && setShowAdjust(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(2px)', zIndex: 100, animation: 'fadeIn 0.2s ease-out' }}></div>
+                    <div style={{ position: 'fixed', top: 0, bottom: 0, right: 0, width: '100%', maxWidth: 480, background: WHITE, zIndex: 101, display: 'flex', flexDirection: 'column', boxShadow: '-10px 0 25px rgba(0,0,0,0.1)', animation: 'slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+                        <div style={{ padding: '20px 24px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: '#FAFAFA' }}>
+                            <div>
+                                <h2 style={{ fontSize: 18, fontWeight: 700, color: TEXT1, margin: 0 }}>Ingreso de Mercadería</h2>
+                                <p style={{ fontSize: 13, color: TEXT3, margin: '4px 0 0' }}>Escanea productos para actualizar stock</p>
+                            </div>
+                            <button onClick={() => setShowAdjust(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: TEXT3, padding: 6, borderRadius: 8, transition: 'all 0.15s' }} onMouseEnter={e => {e.currentTarget.style.background = '#E2E8F0'; e.currentTarget.style.color = TEXT1}} onMouseLeave={e => {e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = TEXT3}}>
+                                <X size={20} />
+                            </button>
                         </div>
 
-                        {/* ── Panel producto encontrado ── */}
-                        {pending && (
-                            <div className="pending-card">
-                                <div className="pending-card-info">
-                                    <div className="pending-card-name">{pending.product.nombre}</div>
-                                    <div className="pending-card-meta">
-                                        <span>Código: <code>{pending.product.codigo}</code></span>
-                                        <span>Precio actual: <b style={{ color: 'var(--accent2)' }}>{fmt(pending.product.pv)}</b></span>
-                                        <span>Stock: <b style={{
-                                            color: pending.product.stock <= 0 ? 'var(--danger)'
-                                                : pending.product.stock <= pending.product.stockMin ? 'var(--warn)'
-                                                    : 'var(--text)'
-                                        }}>{pending.product.stock} u</b></span>
-                                    </div>
-                                </div>
-                                <div className="pending-card-fields">
-                                    <div className="pending-field">
-                                        <label>Agregar stock</label>
-                                        <input
-                                            ref={qtyRef}
-                                            type="number"
-                                            min="1"
-                                            className="pending-input pending-input-qty"
-                                            placeholder="Cantidad"
-                                            value={pending.qty}
-                                            onChange={e => setPending(p => ({ ...p, qty: e.target.value }))}
-                                            onKeyDown={e => {
-                                                if (e.key === 'Enter') { e.preventDefault(); confirmPending(); }
-                                                if (e.key === 'p' || e.key === 'P') { e.preventDefault(); pvPendRef.current?.focus(); }
-                                                if (e.key === 'c' || e.key === 'C') { e.preventDefault(); pcPendRef.current?.focus(); }
-                                                if (e.key === 'Escape') cancelPending();
-                                            }}
-                                        />
-                                    </div>
-                                    <div className="pending-field">
-                                        <label>Precio venta <span style={{ fontWeight: 400, opacity: 0.6 }}>(P)</span></label>
-                                        <input
-                                            ref={pvPendRef}
-                                            type="number"
-                                            min="0"
-                                            className="pending-input"
-                                            placeholder={`Actual: ${fmt(pending.product.pv)}`}
-                                            value={pending.pv}
-                                            onChange={e => setPending(p => ({ ...p, pv: e.target.value }))}
-                                            onKeyDown={e => {
-                                                if (e.key === 'c' || e.key === 'C') { e.preventDefault(); pcPendRef.current?.focus(); }
-                                                if (e.key === 'Enter') { e.preventDefault(); confirmPending(); }
-                                                if (e.key === 'Escape') cancelPending();
-                                            }}
-                                        />
-                                    </div>
-                                    <div className="pending-field">
-                                        <label>Costo compra <span style={{ fontWeight: 400, opacity: 0.6 }}>(C)</span></label>
-                                        <input
-                                            ref={pcPendRef}
-                                            type="number"
-                                            min="0"
-                                            className="pending-input"
-                                            placeholder={`Actual: ${fmt(pending.product.pc || 0)}`}
-                                            value={pending.pc}
-                                            onChange={e => setPending(p => ({ ...p, pc: e.target.value }))}
-                                            onKeyDown={e => {
-                                                if (e.key === 'p' || e.key === 'P') { e.preventDefault(); pvPendRef.current?.focus(); }
-                                                if (e.key === 'Enter') { e.preventDefault(); confirmPending(); }
-                                                if (e.key === 'Escape') cancelPending();
-                                            }}
-                                        />
-                                    </div>
-                                    <div className="pending-card-actions">
-                                        <button className="pending-btn-confirm" onClick={confirmPending}>
-                                            <Check size={16} /> Agregar
-                                        </button>
-                                        <button className="pending-btn-cancel" onClick={cancelPending} title="Cancelar (Esc)">
-                                            <X size={15} />
-                                        </button>
-                                    </div>
-                                </div>
-                                <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text3)' }}>
-                                    Enter agrega directo · P cambia precio · C cambia costo · Esc cancela
-                                </div>
+                        <div style={{ padding: 24, flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+                            {/* Scanner Input */}
+                            <div style={{ position: 'relative' }}>
+                                <input
+                                    ref={scannerRef}
+                                    type="text"
+                                    placeholder="📷 Escanear código o escribir nombre..."
+                                    value={scanValue}
+                                    onChange={e => setScanValue(e.target.value)}
+                                    onKeyDown={handleScan}
+                                    style={{ width: '100%', padding: '12px 16px 12px 42px', borderRadius: 12, border: `2px solid ${BORDER}`, fontSize: 14, fontWeight: 500, outline: 'none', color: TEXT1, transition: 'border-color 0.2s', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}
+                                    onFocus={e => e.target.style.borderColor = '#3B82F6'}
+                                    onBlur={e => e.target.style.borderColor = BORDER}
+                                    autoComplete="off"
+                                />
+                                <Search size={18} color="#94A3B8" style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)' }} />
+                                <div style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 11, background: '#F1F5F9', padding: '2px 6px', borderRadius: 6, color: TEXT3, fontWeight: 600 }}>ENTER</div>
                             </div>
-                        )}
 
-                        {/* ── Lista de items confirmados ── */}
-                        <div className="ingreso-list">
-                            {ingresoItems.length === 0 && !pending
-                                ? <div className="stock-empty" style={{ paddingTop: 40 }}>
-                                    Escanea o buscá un producto para comenzar el ingreso.
-                                  </div>
-                                : ingresoItems.map(i => (
-                                    <div key={i.uid} className={`sitem-card ${i.isNew ? 'sitem-new' : ''}`}>
-                                        <button className="sitem-remove" onClick={() => removeItem(i.uid)}>
-                                            <Trash2 size={14} />
+                            {/* Pending Card */}
+                            {pending && (
+                                <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 12, padding: 16 }}>
+                                    <div style={{ fontSize: 15, fontWeight: 700, color: '#1D4ED8', marginBottom: 8 }}>{pending.product.nombre}</div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                                        <div>
+                                            <label style={{ display: 'block', fontSize: 12, color: '#3B82F6', fontWeight: 600, marginBottom: 4 }}>Agregar stock (Cant)</label>
+                                            <input ref={qtyRef} type="number" min="1" value={pending.qty} onChange={e => setPending(p => ({ ...p, qty: e.target.value }))}
+                                                onKeyDown={e => {
+                                                    if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); confirmPending(); }
+                                                    else if (e.key === 'Enter' || e.key === 'p' || e.key === 'P') { e.preventDefault(); pvPendRef.current?.focus(); }
+                                                    if (e.key === 'c' || e.key === 'C') { e.preventDefault(); pcPendRef.current?.focus(); }
+                                                    if (e.key === 'Escape') cancelPending();
+                                                }}
+                                                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #93C5FD', fontSize: 14, fontWeight: 700 }} />
+                                        </div>
+                                        <div>
+                                            <label style={{ display: 'block', fontSize: 12, color: '#3B82F6', fontWeight: 600, marginBottom: 4 }}>Precio venta</label>
+                                            <input ref={pvPendRef} type="number" min="0" value={pending.pv} onChange={e => setPending(p => ({ ...p, pv: e.target.value }))}
+                                                onKeyDown={e => {
+                                                    if (e.key === 'Enter' || e.key === 'c' || e.key === 'C') { e.preventDefault(); pcPendRef.current?.focus(); }
+                                                    if (e.key === 'Escape') cancelPending();
+                                                }}
+                                                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #93C5FD', fontSize: 14 }} />
+                                        </div>
+                                        <div>
+                                            <label style={{ display: 'block', fontSize: 12, color: '#3B82F6', fontWeight: 600, marginBottom: 4 }}>Costo compra</label>
+                                            <input ref={pcPendRef} type="number" min="0" value={pending.pc} onChange={e => setPending(p => ({ ...p, pc: e.target.value }))}
+                                                onKeyDown={e => {
+                                                    if (e.key === 'Enter') { e.preventDefault(); confirmPending(); }
+                                                    if (e.key === 'p' || e.key === 'P') { e.preventDefault(); pvPendRef.current?.focus(); }
+                                                    if (e.key === 'Escape') cancelPending();
+                                                }}
+                                                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #93C5FD', fontSize: 14 }} />
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 8 }}>
+                                        <button onClick={confirmPending} style={{ flex: 1, padding: '8px', background: '#2563EB', color: WHITE, border: 'none', borderRadius: 8, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                                            <Check size={16} /> Confirmar
                                         </button>
+                                        <button onClick={cancelPending} style={{ padding: '8px 16px', background: WHITE, color: '#3B82F6', border: '1px solid #BFDBFE', borderRadius: 8, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
+                                    </div>
+                                </div>
+                            )}
 
+                            {/* Items List */}
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                {ingresoItems.length === 0 && !pending ? (
+                                    <div style={{ padding: '40px 20px', textAlign: 'center', color: TEXT3, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                                        <Package size={32} color="#CBD5E1" />
+                                        <div style={{ fontSize: 14 }}>Escanea o busca un producto para agregarlo a la lista de ingreso.</div>
+                                    </div>
+                                ) : ingresoItems.map(i => (
+                                    <div key={i.uid} style={{ border: `1px solid ${i.isNew ? '#FDE68A' : BORDER}`, background: i.isNew ? '#FFFBEB' : WHITE, borderRadius: 12, padding: 16, position: 'relative' }}>
+                                        <button onClick={() => removeItem(i.uid)} style={{ position: 'absolute', top: 12, right: 12, background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><Trash2 size={16} /></button>
                                         {i.isNew ? (
-                                            /* Producto nuevo – completar datos */
                                             <>
-                                                <div className="sitem-new-label">
-                                                    <PlusCircle size={13} /> NUEVO · <code style={{ fontSize: 11 }}>{i.codigo}</code>
-                                                </div>
-                                                <input
-                                                    type="text"
-                                                    placeholder="Nombre del producto *"
-                                                    value={i.nombre}
-                                                    onChange={e => updateItem(i.uid, 'nombre', e.target.value)}
-                                                    className="sitem-input sitem-input-nombre"
-                                                />
-                                                <div className="sitem-fields">
-                                                    <div className="sitem-field">
-                                                        <label>Precio venta</label>
-                                                        <input type="number" value={i.pv} onChange={e => updateItem(i.uid, 'pv', e.target.value)} className="sitem-input" />
-                                                    </div>
-                                                    <div className="sitem-field">
-                                                        <label>Precio costo</label>
-                                                        <input type="number" value={i.pc} onChange={e => updateItem(i.uid, 'pc', e.target.value)} className="sitem-input" />
-                                                    </div>
-                                                    <div className="sitem-field">
-                                                        <label>Cantidad *</label>
-                                                        <input type="number" value={i.qty} onChange={e => updateItem(i.uid, 'qty', e.target.value)} className="sitem-input sitem-input-qty" />
-                                                    </div>
+                                                <div style={{ fontSize: 11, fontWeight: 700, color: '#D97706', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}><PlusCircle size={14} /> PRODUCTO NUEVO ({i.codigo})</div>
+                                                <input type="text" placeholder="Nombre completo del producto" value={i.nombre} onChange={e => updateItem(i.uid, 'nombre', e.target.value)} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #FCD34D', marginBottom: 12, fontSize: 14 }} />
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                                                    <div><label style={{ fontSize: 11, fontWeight: 600, color: TEXT2 }}>Cantidad</label><input type="number" value={i.qty} onChange={e => updateItem(i.uid, 'qty', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: 6, border: `1px solid ${BORDER}` }} /></div>
+                                                    <div><label style={{ fontSize: 11, fontWeight: 600, color: TEXT2 }}>P. Venta</label><input type="number" value={i.pv} onChange={e => updateItem(i.uid, 'pv', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: 6, border: `1px solid ${BORDER}` }} /></div>
+                                                    <div><label style={{ fontSize: 11, fontWeight: 600, color: TEXT2 }}>Costo</label><input type="number" value={i.pc} onChange={e => updateItem(i.uid, 'pc', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: 6, border: `1px solid ${BORDER}` }} /></div>
                                                 </div>
                                             </>
                                         ) : (
-                                            /* Producto existente – resumen */
-                                            <div className="sitem-existing">
-                                                <div className="sitem-existing-info">
-                                                    <span className="sitem-existing-name">{i.nombre}</span>
-                                                    <span className="sitem-existing-meta">
-                                                        Stock actual: {i.stockActual} u · Precio: {fmt(parseFloat(i.pv) || 0)} · Costo: {fmt(parseFloat(i.pc) || 0)}
-                                                    </span>
-                                                </div>
-                                                <div className="sitem-existing-right">
-                                                    <span className="sitem-existing-qty">+{i.qty} u</span>
+                                            <div style={{ paddingRight: 24 }}>
+                                                <div style={{ fontSize: 14, fontWeight: 600, color: TEXT1, marginBottom: 4 }}>{i.nombre}</div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12, color: TEXT3 }}>
+                                                    <span style={{ fontWeight: 700, color: GREEN, padding: '2px 8px', background: '#ECFDF5', borderRadius: 6 }}>+{i.qty} unidades</span>
+                                                    <span>PV: {fmt(parseFloat(i.pv))}</span>
+                                                    <span>PC: {fmt(parseFloat(i.pc))}</span>
                                                 </div>
                                             </div>
                                         )}
                                     </div>
-                                ))
-                            }
+                                ))}
+                            </div>
                         </div>
 
-                        {/* ── Footer guardar ── */}
+                        {/* Footer Confirm */}
                         {ingresoItems.length > 0 && (
-                            <div className="ingreso-footer">
+                            <div style={{ padding: 24, borderTop: `1px solid ${BORDER}`, background: '#FAFAFA' }}>
                                 {confirmStep ? (
-                                    <div style={{ background: '#f0edff', border: '1.5px solid #c4b5fd', borderRadius: 12, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                        <div style={{ fontSize: 13, fontWeight: 700, color: '#5b21b6', display: 'flex', justifyContent: 'space-between' }}>
-                                            <span>Guardar {ingresoItems.length} producto{ingresoItems.length !== 1 ? 's' : ''}</span>
-                                            <span style={{ fontWeight: 400, color: '#7c3aed' }}>{fmt(totalCosto)}</span>
-                                        </div>
-
+                                    <div style={{ background: '#F8FAFC', borderRadius: 12, padding: 16, border: `1px solid ${BORDER}` }}>
+                                        <div style={{ fontSize: 14, fontWeight: 700, color: TEXT1, marginBottom: 12 }}>¿Cómo registrar el egreso de caja?</div>
                                         {confirmStep === 'ask' && (
-                                            <>
-                                                <div style={{ fontSize: 14, color: '#374151', fontWeight: 600 }}>¿Cómo querés registrar el costo?</div>
-                                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                                    <button onClick={guardarConCostoItems}
-                                                        style={{ flex: '1 1 180px', padding: '10px 0', borderRadius: 8, border: '1.5px solid #7c3aed', background: '#7c3aed', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: totalCosto > 0 ? 1 : 0.55 }}>
-                                                        <kbd style={{ background: 'rgba(255,255,255,0.25)', borderRadius: 4, padding: '1px 5px', fontSize: 11 }}>C</kbd> Por producto
-                                                    </button>
-                                                    <button onClick={() => { setEgresoImporte(''); setConfirmStep('egreso'); }}
-                                                        style={{ flex: '1 1 180px', padding: '10px 0', borderRadius: 8, border: '1.5px solid #c4b5fd', background: '#ede9fe', color: '#5b21b6', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                                                        <kbd style={{ background: 'rgba(124,58,237,0.12)', borderRadius: 4, padding: '1px 5px', fontSize: 11 }}>T</kbd> Total manual
-                                                    </button>
-                                                    <button onClick={guardarSinCosto}
-                                                        style={{ flex: '1 1 180px', padding: '10px 0', borderRadius: 8, border: '1.5px solid #e5e7eb', background: '#fff', color: '#374151', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                                                        <kbd style={{ background: '#f3f4f6', borderRadius: 4, padding: '1px 5px', fontSize: 11 }}>N</kbd> No
-                                                    </button>
-                                                    <button onClick={() => { setConfirmStep(false); setTimeout(() => scannerRef.current?.focus(), 50); }}
-                                                        style={{ padding: '10px 12px', borderRadius: 8, border: '1.5px solid #e5e7eb', background: '#fff', color: '#9ca3af', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
-                                                        ESC
-                                                    </button>
-                                                </div>
-                                                <div style={{ fontSize: 11, color: '#9ca3af' }}>
-                                                    C usa la suma de los costos por producto · T carga un total manual · N guarda sin egreso
-                                                </div>
-                                            </>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                                <button onClick={guardarConCostoItems} style={{ flex: '1 1 140px', padding: '10px', background: ACCENT, color: WHITE, border: 'none', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontSize: 13, gap: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Por prod. <kbd style={{ background: 'rgba(255,255,255,0.2)', padding:'0 4px', borderRadius:4 }}>C</kbd></button>
+                                                <button onClick={() => { setEgresoImporte(''); setConfirmStep('egreso'); }} style={{ flex: '1 1 140px', padding: '10px', background: WHITE, color: TEXT1, border: `1px solid ${BORDER}`, borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontSize: 13, gap: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Manual <kbd style={{ background: '#E2E8F0', padding:'0 4px', borderRadius:4 }}>T</kbd></button>
+                                                <button onClick={guardarSinCosto} style={{ flex: '1 1 140px', padding: '10px', background: WHITE, color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontSize: 13, gap: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No registrar <kbd style={{ background: '#E2E8F0', padding:'0 4px', borderRadius:4 }}>N</kbd></button>
+                                            </div>
                                         )}
-
                                         {confirmStep === 'egreso' && (
-                                            <>
-                                                <div style={{ fontSize: 14, color: '#374151', fontWeight: 600 }}>Importe del egreso</div>
-                                                <div style={{ display: 'flex', gap: 8 }}>
-                                                    <div style={{ position: 'relative', flex: 1 }}>
-                                                        <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontWeight: 700, color: '#9ca3af', fontSize: 14 }}>$</span>
-                                                        <input
-                                                            ref={egresoRef}
-                                                            type="number" min={0}
-                                                            value={egresoImporte}
-                                                            onChange={e => setEgresoImporte(e.target.value)}
-                                                            onKeyDown={e => {
-                                                                if (e.key === 'Enter')  { e.preventDefault(); ejecutarGuardado(egresoImporte); }
-                                                                if (e.key === 'Escape') { e.preventDefault(); setConfirmStep('ask'); }
-                                                            }}
-                                                            placeholder={String(totalCosto)}
-                                                            style={{ width: '100%', padding: '10px 10px 10px 24px', borderRadius: 8, border: '1.5px solid #7c3aed', fontSize: 14, fontWeight: 700, outline: 'none', fontFamily: 'var(--body)' }}
-                                                        />
-                                                    </div>
-                                                    <button onClick={() => ejecutarGuardado(egresoImporte || totalCosto)}
-                                                        style={{ padding: '10px 16px', borderRadius: 8, border: '1.5px solid #7c3aed', background: '#7c3aed', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
-                                                        Guardar
-                                                    </button>
-                                                    <button onClick={() => setConfirmStep('ask')}
-                                                        style={{ padding: '10px 12px', borderRadius: 8, border: '1.5px solid #e5e7eb', background: '#fff', color: '#9ca3af', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
-                                                        ESC
-                                                    </button>
-                                                </div>
-                                                <div style={{ fontSize: 11, color: '#9ca3af' }}>Enter para guardar · ESC para volver</div>
-                                            </>
+                                            <div style={{ display: 'flex', gap: 8 }}>
+                                                <input ref={egresoRef} type="number" value={egresoImporte} onChange={e => setEgresoImporte(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') ejecutarGuardado(egresoImporte); if (e.key === 'Escape') setConfirmStep('ask'); }} placeholder={String(totalCosto)} style={{ flex: 1, padding: '10px', borderRadius: 8, border: `1px solid ${BORDER}`, fontSize: 14, fontWeight: 700 }} />
+                                                <button onClick={() => ejecutarGuardado(egresoImporte || totalCosto)} style={{ padding: '0 16px', background: ACCENT, color: WHITE, border: 'none', borderRadius: 8, fontWeight: 600, cursor: 'pointer' }}>Guardar</button>
+                                            </div>
                                         )}
+                                        <div style={{ fontSize: 11, color: TEXT3, textAlign: 'center', marginTop: 12 }}>Presiona ESC para cancelar flujo actual</div>
                                     </div>
                                 ) : (
-                                    /* ── Resumen normal ── */
                                     <>
-                                        <div className="ingreso-footer-row">
-                                            <span style={{ color: 'var(--text3)', fontSize: 13 }}>Costo total:</span>
-                                            <span style={{ fontSize: 18, fontWeight: 800 }}>{fmt(totalCosto)}</span>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, fontSize: 14, fontWeight: 700, background: '#F8FAFC', padding: '12px 16px', borderRadius: 8, border: `1px solid ${BORDER}` }}>
+                                            <span style={{ color: TEXT1 }}>Costo a restar de caja:</span>
+                                            <span style={{ fontSize: 18, color: GREEN }}>{fmt(totalCosto)}</span>
                                         </div>
-                                        <button className="btn-full btn-success" onClick={guardarIngreso}>
-                                            ✓ GUARDAR {ingresoItems.length} REGISTRO{ingresoItems.length !== 1 ? 'S' : ''}
+                                        <button onClick={guardarIngreso} style={{ width: '100%', padding: '14px', background: ACCENT, color: WHITE, border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                                            Confirmar Ingreso de {ingresoItems.length} items <kbd style={{ background: 'rgba(255,255,255,0.2)', padding:'2px 6px', borderRadius:4, fontSize: 11 }}>Enter</kbd>
                                         </button>
-                                        <div style={{ textAlign: 'center', fontSize: 11, color: '#bbb', marginTop: 2 }}>
-                                            o presioná <kbd style={{ background: '#f3f4f6', borderRadius: 3, padding: '1px 5px', fontSize: 10, color: '#555' }}>Enter</kbd> con el buscador vacío
+                                        <div style={{ fontSize: 12, color: TEXT3, marginTop: 16, lineHeight: 1.5 }}>
+                                            <div style={{ marginBottom: 4 }}>Con <strong>Enter</strong> en vacío se toma el costo total automático.</div>
+                                            <div style={{ fontWeight: 600 }}>Si querés otra opción, tipeá una letra + Enter:</div>
+                                            <div style={{ display: 'flex', gap: 12, marginTop: 6, fontWeight: 700 }}>
+                                                <span onClick={() => {setScanValue(''); setConfirmStep('egreso');}} style={{ cursor: 'pointer', color: '#10B981', background: '#ECFDF5', padding: '4px 8px', borderRadius: 6 }}>[ M ] Monto Manual</span>
+                                                <span onClick={guardarSinCosto} style={{ cursor: 'pointer', color: '#EF4444', background: '#FEF2F2', padding: '4px 8px', borderRadius: 6 }}>[ N ] No restar caja</span>
+                                            </div>
                                         </div>
                                     </>
                                 )}
                             </div>
                         )}
                     </div>
-                </div>
+                </>
+            )}
 
-            </div>
+            <style>{`
+                @keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+                @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+            `}</style>
         </div>
     );
 }

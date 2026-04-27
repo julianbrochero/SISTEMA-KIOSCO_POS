@@ -28,13 +28,22 @@ export const useStore = create(
     (set, get) => ({
       activePage: 'pos',
       setActivePage: (page) => set({ activePage: page }),
+      showActivation: false,
+      setShowActivation: (val) => set({ showActivation: val }),
 
       // ─── LICENCIA ─────────────────────────────────────────────────────────
-      // Clave única de esta instalación — se genera una sola vez y persiste
+      // Clave única de esta instalación — idealmente el machine ID de la PC
+      // Si se corre en Electron se reemplaza por el ID de hardware al iniciar
       clientKey: uuidv4(),
+      setClientKey: (key) => set({ clientKey: key }),
 
       pendingScanCode: null,
       setPendingScanCode: (code) => set({ pendingScanCode: code }),
+
+      // ─── CATEGORÍAS ───────────────────────────────────────────────────────
+      categorias: ['Bebidas', 'Snacks', 'Lácteos', 'Limpieza', 'Confitería', 'Almacén', 'Golosinas', 'Otros'],
+      addCategoria: (cat) => set(state => ({ categorias: [...state.categorias, cat.trim()] })),
+      deleteCategoria: (cat) => set(state => ({ categorias: state.categorias.filter(c => c !== cat) })),
 
       // ─── CONFIGURACIÓN ────────────────────────────────────────────────────
       configuracion: {
@@ -182,7 +191,7 @@ export const useStore = create(
         set(state => {
           const newProds = [...state.products];
           items.forEach(i => {
-            const idx = newProds.findIndex(x => x.id === i.id);
+            const idx = newProds.findIndex(x => x.id === (i.productId ?? i.id));
             if (idx > -1) newProds[idx] = { ...newProds[idx], stock: newProds[idx].stock + i.qty };
           });
           return { products: newProds };
@@ -192,19 +201,32 @@ export const useStore = create(
       reduceStock: (items) => set(state => {
         const newProds = [...state.products];
         items.forEach(i => {
-          const idx = newProds.findIndex(x => x.id === i.id);
+          if (i.sinStock) return; // productos sin control de stock no descuentan
+          const idx = newProds.findIndex(x => x.id === (i.productId ?? i.id));
           if (idx > -1) newProds[idx] = { ...newProds[idx], stock: Math.max(0, newProds[idx].stock - i.qty) };
         });
         return { products: newProds };
       }),
 
       // Cart
-      addToCart: (p) => set(state => {
-        const existing = state.cart.find(i => i.id === p.id);
+      addToCart: (p, precioOverride = null) => set(state => {
+        const precio = precioOverride !== null ? precioOverride : p.pv;
+        const existing = state.cart.find(i => i.productId === p.id && !p.sinStock);
         if (existing) {
-          return { cart: state.cart.map(i => i.id === p.id ? { ...i, qty: i.qty + 1 } : i) };
+          return { cart: state.cart.map(i => i.productId === p.id ? { ...i, qty: i.qty + 1 } : i) };
         } else {
-          return { cart: [...state.cart, { id: p.id, nombre: p.nombre, cat: p.cat, precio: p.pv, pc: p.pc, qty: 1 }] };
+          return {
+            cart: [...state.cart, {
+              id: p.sinStock ? `pesable-${p.id}-${Date.now()}` : p.id,
+              productId: p.id,
+              nombre: p.nombre,
+              cat: p.cat,
+              precio,
+              pc: p.pc,
+              qty: 1,
+              sinStock: p.sinStock || false
+            }]
+          };
         }
       }),
       addVarios: (amount) => set(state => ({
@@ -291,7 +313,7 @@ export const useStore = create(
         // Restaurar stock de los items de la venta
         const newProds = [...state.products];
         sale.items.forEach(i => {
-          const idx = newProds.findIndex(x => x.id === i.id);
+          const idx = newProds.findIndex(x => x.id === (i.productId ?? i.id));
           if (idx > -1) newProds[idx] = { ...newProds[idx], stock: newProds[idx].stock + i.qty };
         });
 
